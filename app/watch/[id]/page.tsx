@@ -111,32 +111,28 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
       </button>
 
       {/* Sticky Header with WORKING SEARCH BAR */}
-{/* === UPDATED MOBILE-FRIENDLY HEADER === */}
+{/* Clean Mobile Header - No Double Categories */}
 <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
-  <div className="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
+  <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
     <a href="/" className="flex items-center gap-2">
-      <span className="text-[52px] font-black text-red-600 leading-none">X</span>
-      <span className="text-3xl font-black text-white tracking-[-2px]">VIDEOS3</span>
+      <span className="text-[42px] font-black text-red-600 leading-none">X</span>
+      <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
     </a>
     
-    <form onSubmit={handleSearch} className="flex-1 max-w-3xl mx-8">
+    <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
       <input 
         type="text" 
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Search xvideos, desi bhabhi..." 
-        className="w-full bg-[#222] border-2 border-gray-700 hover:border-red-500 focus:border-red-600 rounded-full px-8 py-5 text-xl focus:outline-none placeholder-gray-400 transition"
+        placeholder="Search xvideos..." 
+        className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
       />
     </form>
-
-    <a href="/categories" className="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-full font-bold text-sm transition hidden md:block">
-      Categories
-    </a>
   </div>
 
-  {/* Mobile-friendly Navigation - Smooth horizontal scroll */}
-  <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide">
-    <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6 text-sm font-medium whitespace-nowrap">
+  {/* Single Navigation Bar - No Double */}
+  <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide whitespace-nowrap">
+    <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6 text-sm font-medium">
       <a href="/" className="hover:text-red-500 transition">Best Videos</a>
       <a href="/categories" className="hover:text-red-500 transition">Categories</a>
       <a href="/?q=pornstar" className="hover:text-red-500 transition">Pornstars</a>
