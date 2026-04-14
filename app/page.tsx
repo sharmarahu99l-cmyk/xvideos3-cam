@@ -119,7 +119,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
       {/* Sticky Header */}
-{/* Clean Mobile Header - No Double Categories */}
+{/* Clean Single Header - Fixed Mobile */}
 <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
   <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
     <a href="/" className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export default function Home() {
     </form>
   </div>
 
-  {/* Single Navigation Bar - No Double */}
+  {/* Single Navigation Bar */}
   <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide whitespace-nowrap">
     <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6 text-sm font-medium">
       <a href="/" className="hover:text-red-500 transition">Best Videos</a>
