@@ -1,7 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.eporner.com",
+      },
+      {
+        protocol: "https",
+        hostname: "static-ca-cdn.eporner.com",
+      },
+      {
+        protocol: "https",
+        hostname: "static-eu-cdn.eporner.com",
+      },
+    ],
+  },
 };
 
 export default nextConfig;
