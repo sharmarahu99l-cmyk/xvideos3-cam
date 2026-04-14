@@ -24,7 +24,7 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchInput, setSearchInput] = useState("");   // ← NEW: search bar input
+  const [searchInput, setSearchInput] = useState("");
 
   const loadVideoAndRelated = async () => {
     setLoading(true);
@@ -37,7 +37,6 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
       query = query.replace(/full hd|hd|xxx|porn|sex video|video/gi, '').trim() || "trending";
       setSearchQuery(query);
 
-      // Fresh shuffle every time
       const randomPage = Math.floor(Math.random() * 80) + 1;
       await loadRelated(query, randomPage);
     } catch (e) {
@@ -50,21 +49,10 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
   const loadRelated = async (query: string, page: number) => {
     setLoadingMore(true);
     try {
-      const res = await fetch(
-        `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=50&page=${page}`
-      );
+      const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=50&page=${page}`);
       const data = await res.json();
       const freshVideos = data.videos || [];
-
-      if (freshVideos.length < 10) {
-        const fallbackRes = await fetch(
-          `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=50&page=1`
-        );
-        const fallbackData = await fallbackRes.json();
-        setRelated(fallbackData.videos.slice(0, 15));
-      } else {
-        setRelated(freshVideos.slice(0, 15));
-      }
+      setRelated(freshVideos.slice(0, 15));
     } catch (e) {
       console.error(e);
     } finally {
@@ -84,7 +72,6 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
       .finally(() => setLoadingMore(false));
   };
 
-  // Search bar submit handler - works from watch page
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
@@ -102,23 +89,14 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Floating Back Button */}
-      <button 
-        onClick={() => router.back()}
-        className="fixed bottom-8 right-8 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-full font-bold shadow-2xl z-[100] flex items-center gap-2"
-      >
-        ← Back
-      </button>
+      <button onClick={() => router.back()} className="fixed bottom-8 right-8 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-full font-bold shadow-2xl z-[100] flex items-center gap-2">← Back</button>
 
-      {/* Sticky Header with WORKING SEARCH BAR */}
       <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <span className="text-[52px] font-black text-red-600 leading-none">X</span>
             <span className="text-3xl font-black text-white tracking-[-2px]">VIDEOS3</span>
           </a>
-          
-          {/* WORKING SEARCH BAR */}
           <form onSubmit={handleSearch} className="flex-1 max-w-3xl mx-8">
             <input 
               type="text" 
@@ -128,14 +106,10 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
               className="w-full bg-[#222] border-2 border-gray-700 hover:border-red-500 focus:border-red-600 rounded-full px-8 py-5 text-xl focus:outline-none placeholder-gray-400 transition"
             />
           </form>
-
-          <a href="/categories" className="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-full font-bold text-sm transition">
-            Categories
-          </a>
+          <a href="/categories" className="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-full font-bold text-sm transition">Categories</a>
         </div>
       </header>
 
-      {/* Scrollable Navigation */}
       <div className="bg-[#111] border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4">
           <nav className="flex items-center gap-8 text-sm font-medium py-4">
@@ -150,21 +124,12 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
         <h1 className="text-3xl font-bold mb-6">{video.title}</h1>
 
         <div className="bg-black rounded-3xl overflow-hidden aspect-video mb-8 shadow-2xl border border-gray-700">
-          <iframe 
-            src={`https://www.eporner.com/embed/${id}/`}
-            className="w-full h-full"
-            allowFullScreen
-            allow="autoplay; encrypted-media; fullscreen"
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-          />
+          <iframe src={`https://www.eporner.com/embed/${id}/`} className="w-full h-full" allowFullScreen allow="autoplay; encrypted-media; fullscreen" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups" />
         </div>
 
         <div className="bg-[#111] p-8 rounded-2xl border border-gray-700 mb-10">
           <h2 className="text-red-500 font-bold text-2xl mb-4">Video Description</h2>
-          <p className="text-gray-300 leading-relaxed text-lg">
-            Watch {video.title} full HD video on XVIDEOS3 - Free xvideos. 
-            Best free xvideos platform with high quality streaming.
-          </p>
+          <p className="text-gray-300 leading-relaxed text-lg">Watch {video.title} full HD video on XVIDEOS3 - Free xvideos.</p>
         </div>
 
         <div>
@@ -172,13 +137,8 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {related.map((v) => <VideoCard key={v.id} video={v} />)}
           </div>
-
           <div className="text-center mt-10">
-            <button 
-              onClick={loadMoreRelated}
-              disabled={loadingMore}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 px-12 py-4 rounded-full font-bold text-lg transition"
-            >
+            <button onClick={loadMoreRelated} disabled={loadingMore} className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 px-12 py-4 rounded-full font-bold text-lg transition">
               {loadingMore ? "Loading..." : "LOAD MORE SIMILAR VIDEOS"}
             </button>
           </div>
