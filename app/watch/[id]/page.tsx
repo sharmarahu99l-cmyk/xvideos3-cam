@@ -24,7 +24,7 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchInput, setSearchInput] = useState("");   // ← NEW: search bar input
+  const [searchInput, setSearchInput] = useState("");
 
   const loadVideoAndRelated = async () => {
     setLoading(true);
@@ -37,7 +37,6 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
       query = query.replace(/full hd|hd|xxx|porn|sex video|video/gi, '').trim() || "trending";
       setSearchQuery(query);
 
-      // Fresh shuffle every time
       const randomPage = Math.floor(Math.random() * 80) + 1;
       await loadRelated(query, randomPage);
     } catch (e) {
@@ -84,7 +83,6 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
       .finally(() => setLoadingMore(false));
   };
 
-  // Search bar submit handler - works from watch page
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
@@ -110,50 +108,38 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
         ← Back
       </button>
 
-      {/* Sticky Header with WORKING SEARCH BAR */}
-{/* Clean Single Header - Fixed Mobile */}
-<header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
-  <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-    <a href="/" className="flex items-center gap-2">
-      <span className="text-[42px] font-black text-red-600 leading-none">X</span>
-      <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
-    </a>
-    
-    <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
-      <input 
-        type="text" 
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Search xvideos..." 
-        className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
-      />
-    </form>
-  </div>
+      {/* === CLEAN SINGLE HEADER - NO DOUBLE CATEGORIES === */}
+      <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <a href="/" className="flex items-center gap-2">
+            <span className="text-[42px] font-black text-red-600 leading-none">X</span>
+            <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
+          </a>
+          
+          <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
+            <input 
+              type="text" 
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search xvideos..." 
+              className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
+            />
+          </form>
+        </div>
 
-  {/* Single Navigation Bar */}
-  <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide whitespace-nowrap">
-    <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6 text-sm font-medium">
-      <a href="/" className="hover:text-red-500 transition">Best Videos</a>
-      <a href="/categories" className="hover:text-red-500 transition">Categories</a>
-      <a href="/?q=pornstar" className="hover:text-red-500 transition">Pornstars</a>
-      <a href="/?q=channels" className="hover:text-red-500 transition">Channels</a>
-      <a href="/?q=live" className="hover:text-red-500 transition">Live Cams</a>
-      <a href="/?q=games" className="hover:text-red-500 transition">Games</a>
-      <a href="/?q=dating" className="hover:text-red-500 transition">Dating</a>
-    </div>
-  </div>
-</header>
-
-      {/* Scrollable Navigation */}
-      <div className="bg-[#111] border-b border-gray-700">
-        <div className="max-w-7xl mx-auto px-4">
-          <nav className="flex items-center gap-8 text-sm font-medium py-4">
+        {/* Single Navigation - Mobile Friendly */}
+        <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide whitespace-nowrap py-3">
+          <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 text-sm font-medium">
             <a href="/" className="hover:text-red-500 transition">Best Videos</a>
             <a href="/categories" className="hover:text-red-500 transition">Categories</a>
             <a href="/?q=pornstar" className="hover:text-red-500 transition">Pornstars</a>
-          </nav>
+            <a href="/?q=channels" className="hover:text-red-500 transition">Channels</a>
+            <a href="/?q=live" className="hover:text-red-500 transition">Live Cams</a>
+            <a href="/?q=games" className="hover:text-red-500 transition">Games</a>
+            <a href="/?q=dating" className="hover:text-red-500 transition">Dating</a>
+          </div>
         </div>
-      </div>
+      </header>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6">{video.title}</h1>

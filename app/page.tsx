@@ -59,7 +59,6 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // Initial load
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
     if (q) {
@@ -69,10 +68,9 @@ export default function Home() {
       loadVideos("", 1);
     }
 
-    // REAL FIX: Detect back button and FORCE full reload
     const handlePopState = () => {
       isBackNavigation.current = true;
-      setVideos([]);           // clear old videos
+      setVideos([]);
       setPage(1);
       setLoading(true);
 
@@ -87,7 +85,7 @@ export default function Home() {
     };
 
     const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) {   // browser used back/forward cache
+      if (event.persisted) {
         handlePopState();
       }
     };
@@ -118,44 +116,28 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      {/* Sticky Header */}
-{/* Clean Single Header - Fixed Mobile */}
-<header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
-  <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-    <a href="/" className="flex items-center gap-2">
-      <span className="text-[42px] font-black text-red-600 leading-none">X</span>
-      <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
-    </a>
-    
-    <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
-      <input 
-        type="text" 
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Search xvideos..." 
-        className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
-      />
-    </form>
-  </div>
+      {/* CLEAN SINGLE HEADER - NO DOUBLE CATEGORIES */}
+      <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <a href="/" className="flex items-center gap-2">
+            <span className="text-[42px] font-black text-red-600 leading-none">X</span>
+            <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
+          </a>
+          
+          <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
+            <input 
+              type="text" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search xvideos..." 
+              className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
+            />
+          </form>
+        </div>
 
-  {/* Single Navigation Bar */}
-  <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide whitespace-nowrap">
-    <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6 text-sm font-medium">
-      <a href="/" className="hover:text-red-500 transition">Best Videos</a>
-      <a href="/categories" className="hover:text-red-500 transition">Categories</a>
-      <a href="/?q=pornstar" className="hover:text-red-500 transition">Pornstars</a>
-      <a href="/?q=channels" className="hover:text-red-500 transition">Channels</a>
-      <a href="/?q=live" className="hover:text-red-500 transition">Live Cams</a>
-      <a href="/?q=games" className="hover:text-red-500 transition">Games</a>
-      <a href="/?q=dating" className="hover:text-red-500 transition">Dating</a>
-    </div>
-  </div>
-</header>
-
-      {/* Scrollable Navigation */}
-      <div className="bg-[#111] border-b border-gray-700">
-        <div className="max-w-7xl mx-auto px-4">
-          <nav className="flex items-center gap-8 text-sm font-medium py-4">
+        {/* Single Mobile-Friendly Navigation */}
+        <div className="bg-[#111] border-t border-gray-700 overflow-x-auto scrollbar-hide whitespace-nowrap py-3">
+          <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 text-sm font-medium">
             <a href="/" className="hover:text-red-500 transition">Best Videos</a>
             <a href="/categories" className="hover:text-red-500 transition">Categories</a>
             <a href="/?q=pornstar" className="hover:text-red-500 transition">Pornstars</a>
@@ -163,17 +145,9 @@ export default function Home() {
             <a href="/?q=live" className="hover:text-red-500 transition">Live Cams</a>
             <a href="/?q=games" className="hover:text-red-500 transition">Games</a>
             <a href="/?q=dating" className="hover:text-red-500 transition">Dating</a>
-          </nav>
-
-          <div className="py-3 flex items-center gap-4 text-sm overflow-x-auto border-t border-gray-700">
-            <span className="font-bold text-red-500 whitespace-nowrap">Popular Pornstars:</span>
-            <a href="/?q=sunny leone" className="hover:text-red-400 transition whitespace-nowrap">Sunny Leone</a>
-            <a href="/?q=ava adams" className="hover:text-red-400 transition whitespace-nowrap">Ava Adams</a>
-            <a href="/?q=bhabhi" className="hover:text-red-400 transition whitespace-nowrap">Desi Bhabhi</a>
-            <a href="/?q=aunty" className="hover:text-red-400 transition whitespace-nowrap">Indian Aunty</a>
           </div>
         </div>
-      </div>
+      </header>
 
       <div className="max-w-7xl mx-auto px-4 py-10">
         <h2 className="text-3xl font-bold text-red-600 mb-8">🌍 Trending XVIDEOS Worldwide</h2>
@@ -183,10 +157,6 @@ export default function Home() {
             {[...Array(12)].map((_, i) => (
               <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse">
                 <div className="aspect-video bg-gray-700"></div>
-                <div className="p-4">
-                  <div className="h-4 bg-gray-700 rounded mb-3 w-4/5"></div>
-                  <div className="h-3 bg-gray-700 rounded w-1/2"></div>
-                </div>
               </div>
             ))}
           </div>
