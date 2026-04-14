@@ -23,13 +23,13 @@ export default async function videoSitemap(): Promise<MetadataRoute.Sitemap> {
     videos: [{
       title: video.title || "Free XVIDEOS",
       thumbnail_loc: video.default_thumb?.src || '',
-      description: `Watch ${video.title} full HD video on XVIDEOS3 - Free xvideos`,
+      description: `Watch ${video.title} full HD video on XVIDEOS3`,
       content_loc: `https://www.eporner.com/embed/${video.id}/`,
-      duration: Number(video.length_min) * 60 + Number(video.length_sec || 0),   // ← Fixed: must be number in seconds
+      duration: Number(video.length_min || 0) * 60 + Number(video.length_sec || 0),
       view_count: parseInt(video.views || "10000"),
       publication_date: new Date().toISOString(),
       family_friendly: 'yes' as const,
-      tags: ['xvideos', 'desi', 'indian', 'bhabhi', 'aunty', 'porn', 'mms'],
+      tags: ['xvideos', 'desi', 'indian', 'bhabhi', 'porn'],
     }]
   }));
 }
