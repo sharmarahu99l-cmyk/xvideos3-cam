@@ -5,7 +5,6 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/private/', '/api/'],
     },
     sitemap: 'https://xvideos3.cam/sitemap.xml',
   };
