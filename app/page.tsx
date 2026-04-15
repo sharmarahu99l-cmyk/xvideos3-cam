@@ -121,7 +121,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <span className="text-[42px] font-black text-red-600 leading-none">X</span>
-            <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
+            <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS</span>
           </a>
           
           <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
@@ -150,7 +150,7 @@ export default function Home() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-10">
-        <h2 className="text-3xl font-bold text-red-600 mb-8">🌍 Trending XVIDEOS Worldwide</h2>
+        <h2 className="text-3xl font-bold text-red-600 mb-8">XVIDEOS Worldwide</h2>
 
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
