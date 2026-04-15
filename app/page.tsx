@@ -99,14 +99,13 @@ export default function Home() {
     };
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      setPage(1);
-      loadVideos(searchQuery.trim(), 1);
-      window.history.replaceState({}, '', `?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
+  const handleSearch = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!searchQuery.trim()) return;
+  
+  // Use the new AI search API
+  window.location.href = `/?q=${encodeURIComponent(searchQuery.trim())}`;
+};
 
   const loadMore = () => {
     const nextPage = page + 1;
@@ -124,15 +123,19 @@ export default function Home() {
             <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS</span>
           </a>
           
-          <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4">
-            <input 
-              type="text" 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search xvideos..." 
-              className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
-            />
-          </form>
+          {/* AI-Powered Search Bar */}
+<form 
+  onSubmit={handleSearch} 
+  className="flex-1 max-w-xl mx-4"
+>
+  <input 
+    type="text" 
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    placeholder="Search xvideos, desi bhabhi, indian mms..." 
+    className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
+  />
+</form>
         </div>
 
         {/* Single Mobile-Friendly Navigation */}
