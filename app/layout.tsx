@@ -21,6 +21,27 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{
+  __html: JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "XVIDEOS3.cam",
+    "url": "https://xvideos3.cam",
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://xvideos3.cam/?q={search_term_string}",
+      "query-input": "required name=search_term_string"
+    },
+    "hasPart": [
+      {"@type":"SiteNavigationElement","name":"Hubtube","url":"https://xvideos3.cam/?q=hubtube"},
+      {"@type":"SiteNavigationElement","name":"Redyube","url":"https://xvideos3.cam/?q=redyube"},
+      {"@type":"SiteNavigationElement","name":"Hpornhub","url":"https://xvideos3.cam/?q=hpornhub"},
+      {"@type":"SiteNavigationElement","name":"Desi","url":"https://xvideos3.cam/?q=desi"},
+      {"@type":"SiteNavigationElement","name":"Bhabhi","url":"https://xvideos3.cam/?q=bhabhi"},
+      {"@type":"SiteNavigationElement","name":"Deutsche Pornos","url":"https://xvideos3.cam/?q=deutsche pornos"}
+    ]
+  })
+}} />
       <body>{children}</body>
     </html>
   );
