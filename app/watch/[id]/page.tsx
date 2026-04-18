@@ -117,20 +117,37 @@ export default function WatchPage({ params, searchParams }: { params: Promise<{ 
             <span className="text-2xl font-black text-white tracking-[-1px]">VIDEOS3</span>
           </a>
           
-          
-{/* AI-Powered Search Bar */}
-<form 
-  onSubmit={handleSearch} 
-  className="flex-1 max-w-xl mx-4"
->
-  <input 
-    type="text" 
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    placeholder="Search xvideos, desi bhabhi, indian mms..." 
-    className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
-  />
-</form>
+  
+  
+  {/* AI Autocomplete Search Bar */}
+<div className="flex-1 max-w-xl mx-4 relative">
+  <form onSubmit={handleSearch}>
+    <input 
+      type="text" 
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      placeholder="Search xvideos..." 
+      className="w-full bg-[#222] border border-gray-700 focus:border-red-600 rounded-full px-5 py-3 text-base focus:outline-none"
+    />
+  </form>
+
+  {suggestions.length > 0 && (
+    <div className="absolute top-full left-0 right-0 mt-1 bg-[#222] border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-auto">
+      {suggestions.map((s, i) => (
+        <div 
+          key={i}
+          onClick={() => {
+            setSearchQuery(s);
+            router.push(`/?q=${encodeURIComponent(s)}`);
+          }}
+          className="px-5 py-3 hover:bg-red-600 cursor-pointer text-white"
+        >
+          {s}
+        </div>
+      ))}
+    </div>
+  )}
+</div>  
         </div>
 
         {/* Single Navigation - Mobile Friendly */}
