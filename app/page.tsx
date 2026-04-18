@@ -29,8 +29,23 @@ export default function Home() {
   // Top 5 keywords for ranking
   const topKeywords = ["hubtube", "redyube", "hpornhub", "porne hub", "pornhoub"];
 
-  // Fuzzy search for broken words
-  const getFuzzyQueries = (text) => {
+  // All your keywords from CSV for fuzzy search and tags
+  const allKeywords = [
+    "hubtube","redyube","hpornhub","porne hub","pornhoub","pornhubh","pornhunb","pornu hub",
+    "pornos","xhamers","xvnn","frreporn","youpoorn","youporb","youporen","yporn",
+    "sex videolar","sex vídeo","berazers","xhamster live","mature tube","pornohirsch",
+    "deutsche pornos","deutschepornos","redbtube","redtu be","redtubbe","redtubd","redtubu",
+    "xnxx om","pornofilme","lobstertube","gifporn","matureporn","hd pornos","melonstube",
+    "bangacams","vagosex","dino tube","dinotube","kostenlose pornofilme","pornzog","hamsterporn",
+    "aloha tube","alohatub","alohatube","blowj","tubegalore","4tube","pornoente","youporn c",
+    "transporn","kostenlose sexfilme","analporn","japanporno","lana rhoad","parisporn","pornohammer",
+    "liveporn","freesex","bestporn","pornoraum","tube8","pornh","voyeur house","comicsporn","freshporn","fuqcom","nudevista","tibe8","tikporn",
+    "porntn","omasex","grannyporn","sexfilme kostenlos","drporno","handjop","pornaq","pornhap","porn00","animexxx","hq porner","pornohimmel",
+    "feetporn","bestpornsites","porn300","sexbilder","cumshoot","deutsche pornofilme","facesiting","mein sex video","pornohup","scatporn","tubegals","woodmancasting","www youpor"
+  ];
+
+  // Very loose fuzzy search
+  const getFuzzyQueries = (text: string): string[] => {
     const t = text.toLowerCase().trim();
     if (t.length < 2) return [t];
     const queries = [t];
@@ -39,7 +54,7 @@ export default function Home() {
     return queries;
   };
 
-  const loadVideos = async (query, pageNum = 1, append = false) => {
+  const loadVideos = async (query: string, pageNum: number = 1, append = false) => {
     if (!append) setLoading(true);
     else setLoadingMore(true);
 
@@ -77,19 +92,18 @@ export default function Home() {
     }
   }, []);
 
-  // Real-time suggestions
+  // Real-time suggestions while typing
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSuggestions([]);
       return;
     }
     const fuzzy = getFuzzyQueries(searchQuery);
-    const common = ["porn", "desi porn", "bhabhi", "indian sex", "desi mms", "aunty", "pakistani", "gangbang", "big boobs", "chudai", "groping", "groped", "group sex"];
-    const filtered = common.filter(s => fuzzy.some(f => s.includes(f)));
+    const filtered = allKeywords.filter(s => fuzzy.some(f => s.includes(f)));
     setSuggestions(filtered);
   }, [searchQuery]);
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       setPage(1);
@@ -106,9 +120,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      {/* Title & Meta for ranking on top 5 keywords */}
-      <title>hubtube redyube hpornhub porne hub pornhoub xvideos3 desi porn</title>
-
       <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
