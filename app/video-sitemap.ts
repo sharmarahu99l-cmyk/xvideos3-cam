@@ -26,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         view_count: parseInt(v.views || "10000"),
         publication_date: new Date().toISOString(),
         family_friendly: 'yes',
-        tags: ['xvideos', 'porn', 'hubtube', 'hd', 'free', 'desi'],
+        tags: ['xvideos', 'porn', 'hubtube', 'hd', 'free'],
       }]
     }));
   } catch (e) {
