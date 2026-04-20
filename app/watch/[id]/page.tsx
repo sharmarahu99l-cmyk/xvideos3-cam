@@ -59,28 +59,28 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      <header className="bg-[#111] sticky top-0 z-50 p-4 flex items-center border-b border-gray-700">
-        <a href="/" className="flex items-center gap-1">
-          <span className="text-5xl font-black text-[#FF9900]">H</span>
-          <span className="text-5xl font-black text-white">UB</span>
-          <span className="text-5xl font-black text-[#FF9900]">T</span>
-          <span className="text-5xl font-black text-white">UBE</span>
-        </a>
-        <div className="flex-1 max-w-2xl mx-8 relative">
-          <input placeholder="Search hubtube..." className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-8 py-5 text-xl focus:outline-none text-white" />
+      <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-700">
+        <div className="flex items-center justify-between">
+          <a href="/" className="flex items-center gap-1">
+            <span className="text-4xl font-black text-[#FF9900]">H</span>
+            <span className="text-4xl font-black text-white">UB</span>
+            <span className="text-4xl font-black text-[#FF9900]">T</span>
+            <span className="text-4xl font-black text-white">UBE</span>
+          </a>
+          <div className="flex-1 mx-3 max-w-xs">
+            <input placeholder="Search hubtube..." className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-5 py-3 text-base focus:outline-none text-white" />
+          </div>
+          <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-2">☰</button>
         </div>
-        <div className="relative">
-          <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-4">☰</button>
-          {showMenu && (
-            <div className="absolute right-0 mt-2 w-64 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 z-50 max-h-96 overflow-auto">
-              {categories.map(cat => (
-                <button key={cat} onClick={() => handleCategoryClick(cat)} className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg">
-                  {cat}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {showMenu && (
+          <div className="mt-3 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 max-h-96 overflow-auto">
+            {categories.map(cat => (
+              <button key={cat} onClick={() => handleCategoryClick(cat)} className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg">
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
