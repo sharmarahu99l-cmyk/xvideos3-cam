@@ -38,10 +38,7 @@ const fetchWithFallback = async (query: string, pageNum: number = 1) => {
   }
 };
 
-const categories = [
-  "Hentai", "MILF", "Pinay", "Lesbian", "Anal",
-  "Big Ass", "Latina", "Anime", "Asian", "Femboy"
-];
+const categories = ["Hentai", "MILF", "Pinay", "Lesbian", "Anal", "Big Ass", "Latina", "Anime", "Asian", "Femboy"];
 
 export default function HomeClient() {
   const searchParams = useSearchParams();
@@ -101,11 +98,7 @@ export default function HomeClient() {
           {showMenu && (
             <div className="absolute right-0 mt-2 w-64 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 z-50 max-h-96 overflow-auto">
               {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => handleCategoryClick(cat)}
-                  className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg"
-                >
+                <button key={cat} onClick={() => handleCategoryClick(cat)} className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg">
                   {cat}
                 </button>
               ))}
