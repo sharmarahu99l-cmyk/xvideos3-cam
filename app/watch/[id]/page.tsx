@@ -14,74 +14,41 @@ type Video = {
   views?: string;
 };
 
-const fetchWithFallback = async (query: string) => {
-  try {
-    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=15&page=${Math.floor(Math.random()*80)+1}&order=most_viewed`, { cache: 'no-store' });
-    const data = await res.json();
-    if (data.videos && data.videos.length >= 5) return data.videos;
-  } catch (e) {}
-
-  try {
-    const res = await fetch(`https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=${encodeURIComponent(query)}&page=${Math.floor(Math.random()*200)+1}`);
-    const data = await res.json();
-    return (data.videos || []).map((v: any) => ({
-      id: v.video_id,
-      title: v.title,
-      default_thumb: { src: v.thumb || '' },
-      length_min: parseInt(v.duration?.split(':')[0] || '0'),
-      length_sec: parseInt(v.duration?.split(':')[1] || '0'),
-      embed: `https://embed.redtube.com/?id=${v.video_id}`,
-      views: v.views || '0'
-    }));
-  } catch (e) {
-    return [];
-  }
-};
+const categories = ["Hentai", "MILF", "Pinay", "Lesbian", "Anal", "Big Ass", "Latina", "Anime", "Asian", "Femboy"];
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-
-  const [video, setVideo] = useState<any>(null);
-  const [similarVideos, setSimilarVideos] = useState<any[]>([]);
-  const [moreVideos, setMoreVideos] = useState<any[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [video, setVideo] = useState<Video | null>(null);
+  const [related, setRelated] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
 
-  const loadVideo = async () => {
-    setLoading(true);
+  useEffect(() => {
+    fetch(`https://www.eporner.com/api/v2/video/id/${id}/`)
+      .then(res => res.json())
+      .then(data => {
+        setVideo(data);
+        loadRelated(data.title || "porn");
+        setLoading(false);
+      });
+  }, [id]);
+
+  const loadRelated = async (query: string) => {
     try {
-      const res = await fetch(`https://www.eporner.com/api/v2/video/id/${id}/`);
+      const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=20&page=1&order=most_viewed`);
       const data = await res.json();
-      setVideo(data);
-
-      const similarData = await fetchWithFallback(data.title || "porn");
-      setSimilarVideos(similarData.slice(0, 20));
+      setRelated(data.videos || []);
     } catch (e) {}
-    finally { setLoading(false); }
   };
 
-  const loadMoreVideos = async () => {
-    setLoadingMore(true);
-    const newVideos = await fetchWithFallback("porn");
-    setMoreVideos(prev => [...prev, ...newVideos.slice(0, 15)]);
-    setLoadingMore(false);
+  const handleCategoryClick = (cat: string) => {
+    router.push(`/?q=${encodeURIComponent(cat)}`);
+    setShowMenu(false);
   };
-
-  useEffect(() => { loadVideo(); }, [id]);
-
-  const handleSearch = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
-
-  const description = video ? `Watch ${video.title} full HD on Hubtube. Free German porn video streaming with hubtube quality.` : "Free HD porn videos on Hubtube.";
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
       <header className="bg-[#111] sticky top-0 z-50 p-4 flex items-center border-b border-gray-700">
         <a href="/" className="flex items-center gap-1">
           <span className="text-5xl font-black text-[#FF9900]">H</span>
@@ -89,46 +56,48 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           <span className="text-5xl font-black text-[#FF9900]">T</span>
           <span className="text-5xl font-black text-white">UBE</span>
         </a>
-        <div className="flex-1 max-w-2xl mx-6 relative">
-          <input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search hubtube... (try gangbend)"
-            className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-8 py-5 text-xl focus:outline-none"
-          />
+        <div className="flex-1 max-w-2xl mx-8 relative">
+          <input placeholder="Search hubtube..." className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-8 py-5 text-xl focus:outline-none text-white" />
+        </div>
+        <div className="relative">
+          <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-4">☰</button>
+          {showMenu && (
+            <div className="absolute right-0 mt-2 w-64 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 z-50 max-h-96 overflow-auto">
+              {categories.map(cat => (
+                <button key={cat} onClick={() => handleCategoryClick(cat)} className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg">
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
-      {video && (
-        <div className="max-w-7xl mx-auto p-6">
-          <iframe src={`https://www.eporner.com/embed/${id}/`} className="w-full aspect-video rounded-3xl" allowFullScreen />
-
-          <div className="mt-8 bg-[#111] p-8 rounded-2xl">
-            <p className="text-lg leading-relaxed">{description}</p>
-          </div>
-
-          <div className="mt-12">
-            <h3 className="text-2xl font-bold text-[#FF9900] mb-6">Similar Videos</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {similarVideos.map(v => <VideoCard key={v.id} video={v} />)}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {video && (
+          <div className="relative">
+            <iframe
+              src={`https://www.eporner.com/embed/${id}/`}
+              className="w-full aspect-video bg-black rounded-2xl"
+              allowFullScreen
+            />
+            {/* Hubtube logo exactly at red circle */}
+            <div className="absolute bottom-4 right-4 bg-black/80 px-3 py-1 rounded-lg flex items-center gap-1 text-xl font-black z-10">
+              <span className="text-[#FF9900]">H</span>
+              <span className="text-white">UB</span>
+              <span className="text-[#FF9900]">T</span>
+              <span className="text-white">UBE</span>
             </div>
           </div>
+        )}
 
-          <div className="mt-16">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {moreVideos.map(v => <VideoCard key={v.id} video={v} />)}
-            </div>
-            <div className="text-center mt-10">
-              <button onClick={loadMoreVideos} disabled={loadingMore} className="bg-[#FF9900] hover:bg-orange-600 text-black px-12 py-4 rounded-full font-bold text-lg transition">
-                {loadingMore ? "Loading..." : "MORE VIDEOS"}
-              </button>
-            </div>
+        <div className="mt-8">
+          <h2 className="text-red-500 text-2xl font-bold mb-4">Similar Videos</h2>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {related.map(v => <VideoCard key={v.id} video={v} />)}
           </div>
         </div>
-      )}
-
-      <button onClick={() => window.history.back()} className="fixed bottom-8 right-8 bg-[#FF9900] hover:bg-orange-600 text-black text-4xl w-14 h-14 rounded-2xl shadow-2xl flex items-center justify-center z-[9999]">←</button>
+      </div>
     </div>
   );
 }
