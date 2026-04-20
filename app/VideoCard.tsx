@@ -1,6 +1,25 @@
-export default function VideoCard({ video }: { video: any }) {
+import React from 'react';
+
+type Video = {
+  id: string;
+  title: string;
+  default_thumb: { src: string };
+  length_min: number;
+  length_sec: number;
+  embed: string;
+  views?: string;
+};
+
+export default function VideoCard({ video }: { video: Video }) {
   const highResThumb = video.default_thumb?.src?.replace('/240.jpg', '/1080.jpg') || video.default_thumb?.src;
-  const duration = `${video.length_min}:${String(video.length_sec).padStart(2, '0')}`;
+
+  const totalSeconds = (video.length_min || 0) * 60 + (video.length_sec || 0);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const duration = hours > 0 
+    ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}` 
+    : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
   return (
     <div className="cursor-pointer group">
