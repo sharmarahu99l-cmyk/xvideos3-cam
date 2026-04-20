@@ -26,7 +26,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [loadingMore, setLoadingMore] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(2);
-  const [previewVideo, setPreviewVideo] = useState<Video | null>(null);
 
   useEffect(() => {
     fetch(`https://www.eporner.com/api/v2/video/id/${id}/`)
@@ -39,7 +38,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
   const loadRandomRelated = async () => {
     const randomPage = Math.floor(Math.random() * 80) + 1;
-    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=porn&per_page=20&page=${randomPage}&order=most_viewed`);
+    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=porn&per_page=60&page=${randomPage}&order=most_viewed`);
     const data = await res.json();
     setRelated(data.videos || []);
   };
@@ -47,7 +46,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const loadMoreRelated = async () => {
     setLoadingMore(true);
     const randomPage = Math.floor(Math.random() * 80) + page;
-    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=porn&per_page=15&page=${randomPage}&order=most_viewed`);
+    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=porn&per_page=60&page=${randomPage}&order=most_viewed`);
     const data = await res.json();
     setMoreVideos(prev => [...prev, ...(data.videos || [])]);
     setPage(p => p + 1);

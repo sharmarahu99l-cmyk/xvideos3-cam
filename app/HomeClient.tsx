@@ -15,10 +15,12 @@ type Video = {
   views?: string;
 };
 
+const PER_PAGE = 60;   // ← 60 videos on laptop/desktop
+
 const fetchWithFallback = async (query: string, pageNum: number = 1) => {
   const searchTerm = query.trim() || "porn";
   try {
-    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=15&page=${pageNum}&order=most_viewed`, { cache: 'no-store' });
+    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${PER_PAGE}&page=${pageNum}&order=most_viewed`, { cache: 'no-store' });
     const data = await res.json();
     if (data.videos?.length >= 5) return data.videos;
   } catch (e) {}
@@ -117,7 +119,7 @@ export default function HomeClient() {
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
-            {[...Array(10)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
+            {[...Array(15)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20 text-red-500 text-xl">No results found.<br />Try something else</div>
