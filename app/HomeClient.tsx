@@ -117,7 +117,7 @@ export default function HomeClient() {
 
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
-            {[...Array(15)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
+            {[...Array(30)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20 text-red-500 text-xl">No results found.<br />Try something else</div>
