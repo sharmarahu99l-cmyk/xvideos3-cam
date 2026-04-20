@@ -60,6 +60,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
+      {/* Header with ☰ categories */}
       <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-700">
         <div className="flex items-center justify-between">
           <a href="/" className="flex items-center gap-1">
@@ -85,6 +86,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Video Player with Hubtube logo */}
         {video && (
           <div className="relative">
             <iframe src={`https://www.eporner.com/embed/${id}/`} className="w-full aspect-video bg-black rounded-2xl" allowFullScreen />
@@ -97,6 +99,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
+        {/* Video Description with real title */}
         {video && (
           <div className="mt-6 bg-[#111] p-6 rounded-2xl">
             <h2 className="text-[#FF9900] text-xl font-bold mb-3">Video Description</h2>
@@ -107,8 +110,10 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
+        {/* Floating Back Button */}
         <button onClick={() => router.back()} className="fixed bottom-8 right-8 bg-[#FF9900] text-black w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-2xl z-50">←</button>
 
+        {/* Similar Videos - Vertical Single Line */}
         <div className="mt-8">
           <h2 className="text-[#FF9900] text-2xl font-bold mb-4">Similar Videos</h2>
           <div className="space-y-8">
@@ -120,6 +125,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
 
+        {/* Inline Preview Player (Soft Tap) */}
         {previewVideo && (
           <div className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4" onClick={() => setPreviewVideo(null)}>
             <div className="w-full max-w-2xl bg-black rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -128,6 +134,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
+        {/* MORE VIDEOS Section */}
         <div className="mt-12">
           <div className="space-y-8">
             {moreVideos.map(v => (
