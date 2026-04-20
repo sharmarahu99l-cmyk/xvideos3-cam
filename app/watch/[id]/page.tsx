@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
-import VideoCard from '../../VideoCard';   // ← Correct path
+import VideoCard from '../../VideoCard';
 
 type Video = {
   id: string;
