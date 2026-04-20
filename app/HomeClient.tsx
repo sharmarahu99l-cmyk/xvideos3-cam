@@ -21,7 +21,6 @@ const fetchWithFallback = async (query: string, pageNum: number = 1) => {
     const data = await res.json();
     if (data.videos?.length >= 5) return data.videos;
   } catch (e) {}
-
   try {
     const res = await fetch(`https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=${encodeURIComponent(searchTerm)}&page=${pageNum}`);
     const data = await res.json();
@@ -39,11 +38,17 @@ const fetchWithFallback = async (query: string, pageNum: number = 1) => {
   }
 };
 
+const categories = [
+  "Hentai", "MILF", "Pinay", "Lesbian", "Anal",
+  "Big Ass", "Latina", "Anime", "Asian", "Femboy"
+];
+
 export default function HomeClient() {
   const searchParams = useSearchParams();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
+  const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(1);
 
   const loadVideos = async (query: string = "", pageNum: number = 1) => {
@@ -65,6 +70,12 @@ export default function HomeClient() {
     loadVideos(searchQuery, 1);
   };
 
+  const handleCategoryClick = (cat: string) => {
+    setSearchQuery(cat);
+    loadVideos(cat, 1);
+    setShowMenu(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
       <header className="bg-[#111] sticky top-0 z-50 p-4 flex items-center border-b border-gray-700">
@@ -74,16 +85,33 @@ export default function HomeClient() {
           <span className="text-5xl font-black text-[#FF9900]">T</span>
           <span className="text-5xl font-black text-white">UBE</span>
         </a>
+
         <div className="flex-1 max-w-2xl mx-8 relative">
           <input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onKeyPress={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search hubtube... (try gangbend)"
+            placeholder="Search hubtube..."
             className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-8 py-5 text-xl focus:outline-none text-white"
           />
         </div>
-        <button className="text-4xl text-[#FF9900]">☰</button>
+
+        <div className="relative">
+          <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-4">☰</button>
+          {showMenu && (
+            <div className="absolute right-0 mt-2 w-64 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 z-50 max-h-96 overflow-auto">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => handleCategoryClick(cat)}
+                  className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg"
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-10">
