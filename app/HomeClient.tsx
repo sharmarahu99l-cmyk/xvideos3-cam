@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import VideoCard from './VideoCard';
 
 type Video = {
@@ -42,6 +42,7 @@ const categories = ["Hentai", "MILF", "Pinay", "Lesbian", "Anal", "Big Ass", "La
 
 export default function HomeClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
@@ -66,17 +67,17 @@ export default function HomeClient() {
 
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
-    loadVideos(searchQuery, 1);
+    router.push(`/?q=${encodeURIComponent(searchQuery)}&page=1`);
   };
 
   const handleCategoryClick = (cat: string) => {
     setSearchQuery(cat);
-    loadVideos(cat, 1);
+    router.push(`/?q=${encodeURIComponent(cat)}&page=1`);
     setShowMenu(false);
   };
 
   const changePage = (newPage: number) => {
-    loadVideos(searchQuery, newPage);
+    router.push(`/?q=${encodeURIComponent(searchQuery)}&page=${newPage}`);
   };
 
   return (
