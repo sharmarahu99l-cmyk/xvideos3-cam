@@ -116,15 +116,15 @@ export default function HomeClient() {
         <h1 className="text-4xl font-black text-[#FF9900] mb-8">Hubtube - Trending Worldwide</h1>
 
         {loading ? (
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {[...Array(8)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse w-80 flex-shrink-0 aspect-video" />)}
+          <div className="space-y-8">
+            {[...Array(8)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20 text-red-500 text-xl">No results found.<br />Try something else</div>
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide">
+          <div className="space-y-8">
             {videos.map(v => (
-              <div key={v.id} className="snap-center flex-shrink-0 w-80 cursor-pointer" onClick={() => setPreviewVideo(v)}>
+              <div key={v.id} className="cursor-pointer" onClick={() => setPreviewVideo(v)}>
                 <VideoCard video={v} />
               </div>
             ))}
