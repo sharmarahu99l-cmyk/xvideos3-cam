@@ -4,19 +4,30 @@ type Video = {
   id: string;
   title: string;
   default_thumb: { src: string };
-  length_min: number;
-  length_sec: number;
+  length_min?: number | string;
+  length_sec?: number | string;
   embed: string;
   views?: string;
 };
 
 export default function VideoCard({ video }: { video: Video }) {
-  const highResThumb = video.default_thumb?.src?.replace('/240.jpg', '/1080.jpg') || video.default_thumb?.src;
+  const highResThumb = video.default_thumb?.src?.replace('/240.jpg', '/1080.jpg') || video.default_thumb?.src || '';
 
-  const totalSeconds = (video.length_min || 0) * 60 + (video.length_sec || 0);
+  // Super safe duration calculation (fixes NaN)
+  let totalSeconds = 0;
+  const min = Number(video.length_min) || 0;
+  const sec = Number(video.length_sec) || 0;
+  totalSeconds = min * 60 + sec;
+
+  // If still zero, try fallback (some APIs use different field names)
+  if (totalSeconds === 0 && (video as any).duration) {
+    totalSeconds = parseInt((video as any).duration) || 0;
+  }
+
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+
   const duration = hours > 0 
     ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}` 
     : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;

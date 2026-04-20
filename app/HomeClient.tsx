@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import VideoCard from './VideoCard';
 
 type Video = {
@@ -47,7 +48,6 @@ export default function HomeClient() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
   const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
-  const [previewVideo, setPreviewVideo] = useState<Video | null>(null);
 
   const loadVideos = async (query: string = "", pageNum: number = 1) => {
     setLoading(true);
@@ -116,26 +116,18 @@ export default function HomeClient() {
         <h1 className="text-4xl font-black text-[#FF9900] mb-8">Hubtube - Trending Worldwide</h1>
 
         {loading ? (
-          <div className="space-y-8">
-            {[...Array(8)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
+            {[...Array(10)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20 text-red-500 text-xl">No results found.<br />Try something else</div>
         ) : (
-          <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
             {videos.map(v => (
-              <div key={v.id} className="cursor-pointer" onClick={() => setPreviewVideo(v)}>
+              <Link key={v.id} href={`/watch/${v.id}`} className="block">
                 <VideoCard video={v} />
-              </div>
+              </Link>
             ))}
-          </div>
-        )}
-
-        {previewVideo && (
-          <div className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4" onClick={() => setPreviewVideo(null)}>
-            <div className="w-full max-w-2xl bg-black rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-              <iframe src={previewVideo.embed} className="w-full aspect-video" allowFullScreen allow="autoplay" />
-            </div>
           </div>
         )}
 

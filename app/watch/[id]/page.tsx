@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import VideoCard from '../../VideoCard';
 
 type Video = {
@@ -33,10 +34,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
       .then(data => {
         setVideo(data);
         loadRandomRelated();
-      })
-      .catch(() => {
-        // Fallback if fetch fails
-        setVideo({ id, title: "Video", default_thumb: { src: "" }, length_min: 0, length_sec: 0, embed: `https://www.eporner.com/embed/${id}/` });
       });
   }, [id]);
 
@@ -89,7 +86,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Video Player with Logo */}
         {video && (
           <div className="relative">
             <iframe src={`https://www.eporner.com/embed/${id}/`} className="w-full aspect-video bg-black rounded-2xl" allowFullScreen />
@@ -102,7 +98,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
-        {/* Description */}
         {video && (
           <div className="mt-6 bg-[#111] p-6 rounded-2xl">
             <h2 className="text-[#FF9900] text-xl font-bold mb-3">Video Description</h2>
@@ -113,37 +108,25 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
-        {/* Floating Back Button */}
         <button onClick={() => router.back()} className="fixed bottom-8 right-8 bg-[#FF9900] text-black w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-2xl z-50">←</button>
 
-        {/* Similar Videos - Vertical */}
         <div className="mt-8">
           <h2 className="text-[#FF9900] text-2xl font-bold mb-4">Similar Videos</h2>
-          <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
             {related.map(v => (
-              <div key={v.id} className="cursor-pointer" onClick={() => setPreviewVideo(v)}>
+              <Link key={v.id} href={`/watch/${v.id}`} className="block">
                 <VideoCard video={v} />
-              </div>
+              </Link>
             ))}
           </div>
         </div>
 
-        {/* Inline Preview */}
-        {previewVideo && (
-          <div className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4" onClick={() => setPreviewVideo(null)}>
-            <div className="w-full max-w-2xl bg-black rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-              <iframe src={previewVideo.embed} className="w-full aspect-video" allowFullScreen allow="autoplay" />
-            </div>
-          </div>
-        )}
-
-        {/* MORE VIDEOS */}
         <div className="mt-12">
-          <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
             {moreVideos.map(v => (
-              <div key={v.id} className="cursor-pointer" onClick={() => setPreviewVideo(v)}>
+              <Link key={v.id} href={`/watch/${v.id}`} className="block">
                 <VideoCard video={v} />
-              </div>
+              </Link>
             ))}
           </div>
           <div className="text-center mt-10">
