@@ -59,6 +59,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
+      {/* Persistent header */}
       <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-700">
         <div className="flex items-center justify-between">
           <a href="/" className="flex items-center gap-1">
@@ -87,6 +88,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
         {video && (
           <div className="relative">
             <iframe src={`https://www.eporner.com/embed/${id}/`} className="w-full aspect-video bg-black rounded-2xl" allowFullScreen />
+            {/* Small Hubtube logo in player */}
             <div className="absolute bottom-4 right-4 bg-black/80 px-2 py-1 rounded-lg flex items-center gap-1 text-lg font-black z-10">
               <span className="text-[#FF9900]">H</span>
               <span className="text-white">UB</span>
@@ -96,6 +98,18 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
+        {/* Video Description using video.title */}
+        {video && (
+          <div className="mt-6 bg-[#111] p-6 rounded-2xl">
+            <h2 className="text-[#FF9900] text-xl font-bold mb-3">Video Description</h2>
+            <p className="text-gray-300 leading-relaxed">
+              Watch {video.title} full HD video on Hubtube.<br />
+              Free HD porn video streaming with hubtube quality.
+            </p>
+          </div>
+        )}
+
+        {/* Floating back button */}
         <button onClick={() => router.back()} className="fixed bottom-8 right-8 bg-[#FF9900] text-black w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-2xl z-50">←</button>
 
         <div className="mt-8">
