@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import VideoCard from './VideoCard';
 
 type Video = {
@@ -42,12 +42,12 @@ const categories = ["Hentai", "MILF", "Pinay", "Lesbian", "Anal", "Big Ass", "La
 
 export default function HomeClient() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
   const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
+  const [previewVideo, setPreviewVideo] = useState<Video | null>(null);
 
   const loadVideos = async (query: string = "", pageNum: number = 1) => {
     setLoading(true);
@@ -67,17 +67,17 @@ export default function HomeClient() {
 
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
-    router.push(`/?q=${encodeURIComponent(searchQuery)}&page=1`);
+    loadVideos(searchQuery, 1);
   };
 
   const handleCategoryClick = (cat: string) => {
     setSearchQuery(cat);
-    router.push(`/?q=${encodeURIComponent(cat)}&page=1`);
+    loadVideos(cat, 1);
     setShowMenu(false);
   };
 
   const changePage = (newPage: number) => {
-    router.push(`/?q=${encodeURIComponent(searchQuery)}&page=${newPage}`);
+    loadVideos(searchQuery, newPage);
   };
 
   return (
@@ -116,14 +116,26 @@ export default function HomeClient() {
         <h1 className="text-4xl font-black text-[#FF9900] mb-8">Hubtube - Trending Worldwide</h1>
 
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
-            {[...Array(30)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {[...Array(8)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse w-80 flex-shrink-0 aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20 text-red-500 text-xl">No results found.<br />Try something else</div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
-            {videos.map(v => <VideoCard key={v.id} video={v} />)}
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide">
+            {videos.map(v => (
+              <div key={v.id} className="snap-center flex-shrink-0 w-80 cursor-pointer" onClick={() => setPreviewVideo(v)}>
+                <VideoCard video={v} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {previewVideo && (
+          <div className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4" onClick={() => setPreviewVideo(null)}>
+            <div className="w-full max-w-2xl bg-black rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              <iframe src={previewVideo.embed} className="w-full aspect-video" allowFullScreen allow="autoplay" />
+            </div>
           </div>
         )}
 

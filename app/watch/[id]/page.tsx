@@ -25,6 +25,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [loadingMore, setLoadingMore] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(2);
+  const [previewVideo, setPreviewVideo] = useState<Video | null>(null);
 
   useEffect(() => {
     fetch(`https://www.eporner.com/api/v2/video/id/${id}/`)
@@ -110,14 +111,30 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
         <div className="mt-8">
           <h2 className="text-[#FF9900] text-2xl font-bold mb-4">Similar Videos</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {related.map(v => <VideoCard key={v.id} video={v} />)}
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
+            {related.map(v => (
+              <div key={v.id} className="snap-center flex-shrink-0 w-80 cursor-pointer" onClick={() => setPreviewVideo(v)}>
+                <VideoCard video={v} />
+              </div>
+            ))}
           </div>
         </div>
 
+        {previewVideo && (
+          <div className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-4" onClick={() => setPreviewVideo(null)}>
+            <div className="w-full max-w-2xl bg-black rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              <iframe src={previewVideo.embed} className="w-full aspect-video" allowFullScreen allow="autoplay" />
+            </div>
+          </div>
+        )}
+
         <div className="mt-12">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {moreVideos.map(v => <VideoCard key={v.id} video={v} />)}
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
+            {moreVideos.map(v => (
+              <div key={v.id} className="snap-center flex-shrink-0 w-80 cursor-pointer" onClick={() => setPreviewVideo(v)}>
+                <VideoCard video={v} />
+              </div>
+            ))}
           </div>
           <div className="text-center mt-10">
             <button onClick={loadMoreRelated} disabled={loadingMore} className="bg-[#FF9900] hover:bg-orange-600 text-black px-12 py-4 rounded-full font-bold text-lg transition">
