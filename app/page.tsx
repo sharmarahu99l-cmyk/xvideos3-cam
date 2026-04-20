@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import VideoCard from './VideoCard';
 
+export const dynamic = 'force-dynamic';   // ← This fixes the prerender error
+
 type Video = {
   id: string;
   title: string;
