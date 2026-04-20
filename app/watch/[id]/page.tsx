@@ -26,6 +26,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [loadingMore, setLoadingMore] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(2);
+  const [searchInput, setSearchInput] = useState("");
 
   useEffect(() => {
     fetch(`https://www.eporner.com/api/v2/video/id/${id}/`)
@@ -58,8 +59,16 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
     setShowMenu(false);
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput.trim()) {
+      router.push(`/?q=${encodeURIComponent(searchInput.trim())}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
+      {/* Header with working search bar */}
       <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-700">
         <div className="flex items-center justify-between">
           <a href="/" className="flex items-center gap-1">
@@ -68,11 +77,20 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
             <span className="text-4xl font-black text-[#FF9900]">T</span>
             <span className="text-4xl font-black text-white">UBE</span>
           </a>
-          <div className="flex-1 mx-3 max-w-xs">
-            <input placeholder="Search hubtube..." className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-5 py-3 text-base focus:outline-none text-white" />
-          </div>
+
+          {/* Working Search Bar */}
+          <form onSubmit={handleSearch} className="flex-1 mx-3 max-w-xs">
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search hubtube..."
+              className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-5 py-3 text-base focus:outline-none text-white"
+            />
+          </form>
+
           <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-2">☰</button>
         </div>
+
         {showMenu && (
           <div className="mt-3 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 max-h-96 overflow-auto">
             {categories.map(cat => (
