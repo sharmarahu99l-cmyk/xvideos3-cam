@@ -111,9 +111,9 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
         <div className="mt-8">
           <h2 className="text-[#FF9900] text-2xl font-bold mb-4">Similar Videos</h2>
-          <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
+          <div className="space-y-8">
             {related.map(v => (
-              <div key={v.id} className="snap-center flex-shrink-0 w-80 cursor-pointer" onClick={() => setPreviewVideo(v)}>
+              <div key={v.id} className="cursor-pointer" onClick={() => setPreviewVideo(v)}>
                 <VideoCard video={v} />
               </div>
             ))}
@@ -129,9 +129,9 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
         )}
 
         <div className="mt-12">
-          <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
+          <div className="space-y-8">
             {moreVideos.map(v => (
-              <div key={v.id} className="snap-center flex-shrink-0 w-80 cursor-pointer" onClick={() => setPreviewVideo(v)}>
+              <div key={v.id} className="cursor-pointer" onClick={() => setPreviewVideo(v)}>
                 <VideoCard video={v} />
               </div>
             ))}
