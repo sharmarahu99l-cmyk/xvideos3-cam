@@ -1,6 +1,5 @@
 export default function VideoCard({ video }: { video: any }) {
   const highResThumb = video.default_thumb?.src?.replace('/240.jpg', '/1080.jpg') || video.default_thumb?.src;
-
   const duration = `${video.length_min}:${String(video.length_sec).padStart(2, '0')}`;
 
   return (
