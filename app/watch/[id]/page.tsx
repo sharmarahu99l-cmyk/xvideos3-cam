@@ -21,8 +21,10 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter();
   const [video, setVideo] = useState<Video | null>(null);
   const [related, setRelated] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [moreVideos, setMoreVideos] = useState<Video[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [page, setPage] = useState(2);
 
   useEffect(() => {
     fetch(`https://www.eporner.com/api/v2/video/id/${id}/`)
@@ -30,16 +32,22 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
       .then(data => {
         setVideo(data);
         loadRelated(data.title || "porn");
-        setLoading(false);
       });
   }, [id]);
 
   const loadRelated = async (query: string) => {
-    try {
-      const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=20&page=1&order=most_viewed`);
-      const data = await res.json();
-      setRelated(data.videos || []);
-    } catch (e) {}
+    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=20&page=1&order=most_viewed`);
+    const data = await res.json();
+    setRelated(data.videos || []);
+  };
+
+  const loadMoreRelated = async () => {
+    setLoadingMore(true);
+    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=porn&per_page=15&page=${page}&order=most_viewed`);
+    const data = await res.json();
+    setMoreVideos(prev => [...prev, ...(data.videos || [])]);
+    setPage(p => p + 1);
+    setLoadingMore(false);
   };
 
   const handleCategoryClick = (cat: string) => {
@@ -49,6 +57,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
+      {/* Persistent header on watch page */}
       <header className="bg-[#111] sticky top-0 z-50 p-4 flex items-center border-b border-gray-700">
         <a href="/" className="flex items-center gap-1">
           <span className="text-5xl font-black text-[#FF9900]">H</span>
@@ -81,8 +90,8 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
               className="w-full aspect-video bg-black rounded-2xl"
               allowFullScreen
             />
-            {/* Hubtube logo exactly at red circle */}
-            <div className="absolute bottom-4 right-4 bg-black/80 px-3 py-1 rounded-lg flex items-center gap-1 text-xl font-black z-10">
+            {/* Smaller Hubtube logo at red circle position */}
+            <div className="absolute bottom-4 right-4 bg-black/80 px-2 py-1 rounded-lg flex items-center gap-1 text-lg font-black z-10">
               <span className="text-[#FF9900]">H</span>
               <span className="text-white">UB</span>
               <span className="text-[#FF9900]">T</span>
@@ -91,10 +100,34 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
 
+        {/* Floating back button */}
+        <button
+          onClick={() => router.back()}
+          className="fixed bottom-8 right-8 bg-[#FF9900] text-black w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-2xl z-50"
+        >
+          ←
+        </button>
+
         <div className="mt-8">
-          <h2 className="text-red-500 text-2xl font-bold mb-4">Similar Videos</h2>
+          <h2 className="text-[#FF9900] text-2xl font-bold mb-4">Similar Videos</h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {related.map(v => <VideoCard key={v.id} video={v} />)}
+          </div>
+        </div>
+
+        {/* MORE VIDEOS button at bottom */}
+        <div className="mt-12">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {moreVideos.map(v => <VideoCard key={v.id} video={v} />)}
+          </div>
+          <div className="text-center mt-10">
+            <button
+              onClick={loadMoreRelated}
+              disabled={loadingMore}
+              className="bg-[#FF9900] hover:bg-orange-600 text-black px-12 py-4 rounded-full font-bold text-lg transition"
+            >
+              {loadingMore ? "Loading..." : "MORE VIDEOS"}
+            </button>
           </div>
         </div>
       </div>
