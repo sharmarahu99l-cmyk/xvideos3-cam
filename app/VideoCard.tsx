@@ -1,53 +1,43 @@
 'use client';
 
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 
-type Video = {
-  id: string;
-  title: string;
-  default_thumb: { src: string };
-  length_min: number;
-  length_sec: number;
-  embed: string;
-  views?: string;
-};
+export default function VideoCard({ video }: { video: any }) {
+  // Safe duration calculation - no more NaN
+  const totalSeconds = 
+    (Number(video.length_min) || 0) * 60 + 
+    (Number(video.length_sec) || 0);
 
-export default function VideoCard({ video }: { video: Video }) {
-  const router = useRouter();
-  const duration = `${video.length_min}:${video.length_sec.toString().padStart(2, '0')}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  let duration = '';
+
+  if (hours > 0) {
+    duration = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  } else {
+    duration = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
 
   return (
     <div 
-      onClick={() => router.push(`/watch/${video.id}`)}
-      className="bg-[#1a1a1a] rounded-2xl overflow-hidden cursor-pointer hover:scale-[1.04] active:scale-95 transition-all duration-300 group border border-gray-800 hover:border-red-600 shadow-lg"
+      className="cursor-pointer group" 
+      onClick={() => window.location.href = `/watch/${video.id}`}
     >
-      <div className="aspect-video relative overflow-hidden bg-black">
+      <div className="relative overflow-hidden rounded-2xl">
         <Image 
           src={video.default_thumb.src} 
-          alt={video.title}
-          fill
-          className="object-cover group-hover:scale-110 transition-transform duration-500"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-          loading="lazy"
+          alt={video.title} 
+          width={320} 
+          height={180} 
+          className="w-full aspect-video object-cover group-hover:scale-105 transition"
         />
-        <div className="absolute bottom-3 right-3 bg-black/90 text-white text-sm px-3 py-1 rounded font-mono font-bold shadow-md">
+        <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs font-bold px-2 py-1 rounded">
           {duration}
         </div>
-        <div className="absolute top-3 left-3 bg-red-600 text-white text-xs px-3 py-0.5 rounded font-bold shadow">
-          HD
-        </div>
       </div>
-      
-      <div className="p-4">
-        <p className="text-[15.5px] font-medium line-clamp-2 leading-tight mb-3 group-hover:text-red-500 transition-colors min-h-[44px]">
-          {video.title}
-        </p>
-        <div className="flex justify-between text-xs text-gray-400">
-          <span>HD</span>
-          <span>{video.views || 'N/A'} views</span>
-        </div>
-      </div>
+      <p className="text-sm mt-3 line-clamp-2 px-1">{video.title}</p>
     </div>
   );
 }

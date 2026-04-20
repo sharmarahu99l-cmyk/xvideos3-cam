@@ -2,15 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "XVIDEOS3.cam - Free XVIDEOS",
-  description: "Watch free xvideos, desi porn, indian sex, bhabhi chudai, aunty sex and more. Best xvideos site.",
+  title: "Hubtube - Free Porn Videos",
+  description: "Hubtube - Watch free HD porn videos. Hubtube is your best source for random porn videos.",
   icons: {
-    icon: [
-      {
-        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' rx='40' ry='40' fill='%23111111'/%3E%3Ctext x='100' y='135' font-family='Arial Black' font-size='140' text-anchor='middle' fill='%23e60012'%3EX%3C/text%3E%3C/svg%3E",
-        sizes: "any",
-      },
-    ],
+    icon: "/favicon.ico",           // ← Your uploaded sexy V-shaped girl ass favicon
   },
 };
 
@@ -21,27 +16,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{
-  __html: JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "XVIDEOS3.cam",
-    "url": "https://xvideos3.cam",
-    "potentialAction": {
-      "@type": "SearchAction",
-      "target": "https://xvideos3.cam/?q={search_term_string}",
-      "query-input": "required name=search_term_string"
-    },
-    "hasPart": [
-      {"@type":"SiteNavigationElement","name":"Hubtube","url":"https://xvideos3.cam/?q=hubtube"},
-      {"@type":"SiteNavigationElement","name":"Redyube","url":"https://xvideos3.cam/?q=redyube"},
-      {"@type":"SiteNavigationElement","name":"Hpornhub","url":"https://xvideos3.cam/?q=hpornhub"},
-      {"@type":"SiteNavigationElement","name":"Desi","url":"https://xvideos3.cam/?q=desi"},
-      {"@type":"SiteNavigationElement","name":"Bhabhi","url":"https://xvideos3.cam/?q=bhabhi"},
-      {"@type":"SiteNavigationElement","name":"Deutsche Pornos","url":"https://xvideos3.cam/?q=deutsche pornos"}
-    ]
-  })
-}} />
       <body>{children}</body>
     </html>
   );

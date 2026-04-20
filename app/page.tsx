@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import VideoCard from './VideoCard';
 
 type Video = {
@@ -13,223 +14,113 @@ type Video = {
   views?: string;
 };
 
+const fetchWithFallback = async (query: string, pageNum: number = 1) => {
+  const searchTerm = query.trim() || "porn";
+  try {
+    const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=15&page=${pageNum}&order=most_viewed`, { cache: 'no-store' });
+    const data = await res.json();
+    if (data.videos && data.videos.length >= 5) return data.videos;
+  } catch (e) {}
+
+  try {
+    const res = await fetch(`https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=${encodeURIComponent(searchTerm)}&page=${pageNum}`);
+    const data = await res.json();
+    return (data.videos || []).map((v: any) => ({
+      id: v.video_id,
+      title: v.title,
+      default_thumb: { src: v.thumb || '' },
+      length_min: parseInt(v.duration?.split(':')[0] || '0'),
+      length_sec: parseInt(v.duration?.split(':')[1] || '0'),
+      embed: `https://embed.redtube.com/?id=${v.video_id}`,
+      views: v.views || '0'
+    }));
+  } catch (e) {
+    return [];
+  }
+};
+
 export default function Home() {
+  const searchParams = useSearchParams();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentSearch, setCurrentSearch] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
+  const [showMenu, setShowMenu] = useState(false);
   const [page, setPage] = useState(1);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
 
-  const isBackNavigation = useRef(false);
-
-  // Top 5 keywords for ranking
-  const topKeywords = ["hubtube", "redyube", "hpornhub", "porne hub", "pornhoub"];
-
-  // All your keywords from CSV for fuzzy search and tags
-  const allKeywords = [
-    "hubtube","redyube","hpornhub","porne hub","pornhoub","pornhubh","pornhunb","pornu hub",
-    "pornos","xhamers","xvnn","frreporn","youpoorn","youporb","youporen","yporn",
-    "sex videolar","sex vídeo","berazers","xhamster live","mature tube","pornohirsch",
-    "deutsche pornos","deutschepornos","redbtube","redtu be","redtubbe","redtubd","redtubu",
-    "xnxx om","pornofilme","lobstertube","gifporn","matureporn","hd pornos","melonstube",
-    "bangacams","vagosex","dino tube","dinotube","kostenlose pornofilme","pornzog","hamsterporn",
-    "aloha tube","alohatub","alohatube","blowj","tubegalore","4tube","pornoente","youporn c",
-    "transporn","kostenlose sexfilme","analporn","japanporno","lana rhoad","parisporn","pornohammer",
-    "liveporn","freesex","bestporn","pornoraum","tube8","pornh","voyeur house","comicsporn","freshporn","fuqcom","nudevista","tibe8","tikporn",
-    "porntn","omasex","grannyporn","sexfilme kostenlos","drporno","handjop","pornaq","pornhap","porn00","animexxx","hq porner","pornohimmel",
-    "feetporn","bestpornsites","porn300","sexbilder","cumshoot","deutsche pornofilme","facesiting","mein sex video","pornohup","scatporn","tubegals","woodmancasting","www youpor"
-  ];
-
-  // Very loose fuzzy search
-  const getFuzzyQueries = (text: string): string[] => {
-    const t = text.toLowerCase().trim();
-    if (t.length < 2) return [t];
-    const queries = [t];
-    if (t.length > 3) queries.push(t.substring(0, t.length - 1));
-    if (t.length > 4) queries.push(t.substring(0, t.length - 2));
-    return queries;
-  };
-
-  const loadVideos = async (query: string, pageNum: number = 1, append = false) => {
-    if (!append) setLoading(true);
-    else setLoadingMore(true);
-
-    try {
-      const searchTerm = query.trim() || "desi";
-      const res = await fetch(
-        `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=12&page=${pageNum}&order=most_viewed`,
-        { cache: 'no-store' }
-      );
-      const data = await res.json();
-      
-      if (append) {
-        setVideos(prev => [...prev, ...(data.videos || [])]);
-      } else {
-        setVideos(data.videos || []);
-      }
-      setCurrentSearch(query);
-    } catch (err) {
-      console.error(err);
-      setError(true);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
+  const loadVideos = async (query: string = "", pageNum: number = 1) => {
+    setLoading(true);
+    const fetchedVideos = await fetchWithFallback(query, pageNum);
+    setVideos(fetchedVideos);
+    setPage(pageNum);
+    setLoading(false);
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const q = params.get('q');
-    if (q) {
-      setSearchQuery(q);
-      loadVideos(q, 1);
-    } else {
-      loadVideos("", 1);
-    }
-  }, []);
+    const q = searchParams.get('q') || "";
+    setSearchQuery(q);
+    loadVideos(q, 1);
+  }, [searchParams]);
 
-  // Real-time suggestions while typing
-  useEffect(() => {
-    if (searchQuery.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    const fuzzy = getFuzzyQueries(searchQuery);
-    const filtered = allKeywords.filter(s => fuzzy.some(f => s.includes(f)));
-    setSuggestions(filtered);
-  }, [searchQuery]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      setPage(1);
-      loadVideos(searchQuery.trim(), 1);
-      window.history.replaceState({}, '', `?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
-
-  const loadMore = () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    loadVideos(currentSearch, nextPage, true);
+  const handleSearch = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    loadVideos(searchQuery, 1);
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      <header className="bg-[#111] sticky top-0 z-50 border-b border-gray-800 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2">
-            <span className="text-[52px] font-black text-red-600 leading-none">X</span>
-            <span className="text-3xl font-black text-white tracking-[-2px]">VIDEOS3</span>
-          </a>
-          
-          <div className="flex-1 max-w-3xl mx-8 relative">
-            <form onSubmit={handleSearch}>
-              <input 
-                type="text" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search xvideos, desi bhabhi..." 
-                className="w-full bg-[#222] border-2 border-gray-700 hover:border-red-500 focus:border-red-600 rounded-full px-8 py-5 text-xl focus:outline-none placeholder-gray-400 transition"
-              />
-            </form>
-
-            {/* Suggestions Dropdown */}
-            {suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[#222] border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-auto">
-                {suggestions.map((s, i) => (
-                  <div 
-                    key={i}
-                    onClick={() => {
-                      setSearchQuery(s);
-                      loadVideos(s, 1);
-                    }}
-                    className="px-6 py-4 hover:bg-red-600 cursor-pointer text-white border-b border-gray-700 last:border-none"
-                  >
-                    {s}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Categories Dropdown */}
-          <div className="relative">
-            <button 
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-full font-bold text-sm transition flex items-center gap-2"
-            >
-              Categories ▼
-            </button>
-
-            {showDropdown && (
-              <div className="absolute right-0 mt-2 bg-[#222] border border-gray-700 rounded-2xl shadow-2xl z-50 w-64 py-2">
-                {/* Top 5 Keywords */}
-                <div className="px-4 py-2 text-red-500 font-bold">Top Keywords</div>
-                {topKeywords.map((kw, i) => (
-                  <a key={i} href={`/?q=${encodeURIComponent(kw)}`} className="block px-6 py-3 hover:bg-red-600">
-                    {kw}
-                  </a>
-                ))}
-                
-                <div className="border-t border-gray-700 my-2"></div>
-                
-                {/* Current Categories */}
-                <a href="/" className="block px-6 py-3 hover:bg-red-600">Best Videos</a>
-                <a href="/categories" className="block px-6 py-3 hover:bg-red-600">Categories</a>
-                <a href="/?q=pornstar" className="block px-6 py-3 hover:bg-red-600">Pornstars</a>
-                <a href="/?q=channels" className="block px-6 py-3 hover:bg-red-600">Channels</a>
-                <a href="/?q=live" className="block px-6 py-3 hover:bg-red-600">Live Cams</a>
-                <a href="/?q=games" className="block px-6 py-3 hover:bg-red-600">Games</a>
-                <a href="/?q=dating" className="block px-6 py-3 hover:bg-red-600">Dating</a>
-              </div>
-            )}
-          </div>
+      <header className="bg-[#111] sticky top-0 z-50 p-4 flex items-center border-b border-gray-700">
+        <a href="/" className="flex items-center gap-1">
+          <span className="text-5xl font-black text-[#FF9900]">H</span>
+          <span className="text-5xl font-black text-white">UB</span>
+          <span className="text-5xl font-black text-[#FF9900]">T</span>
+          <span className="text-5xl font-black text-white">UBE</span>
+        </a>
+        <div className="flex-1 max-w-2xl mx-8 relative">
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyPress={e => e.key === 'Enter' && handleSearch()}
+            placeholder="Search hubtube... (try gangbend)"
+            className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full px-8 py-5 text-xl focus:outline-none text-white"
+          />
         </div>
+        <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900]">☰</button>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-10">
-        <h1 className="text-4xl font-bold text-red-600 mb-2">hubtube redyube hpornhub porne hub pornhoub xvideos3</h1>
-        <h2 className="text-3xl font-bold text-red-600 mb-8">🌍 Trending XVIDEOS Worldwide</h2>
+        <h1 className="text-4xl font-black text-[#FF9900] mb-8">Hubtube - Search Results</h1>
 
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
-            {[...Array(12)].map((_, i) => (
-              <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse">
-                <div className="aspect-video bg-gray-700"></div>
-              </div>
-            ))}
+            {[...Array(15)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
-        ) : error ? (
-          <div className="text-center py-20 text-red-500">Failed to load videos. Please refresh.</div>
+        ) : videos.length === 0 ? (
+          <div className="text-center py-20 text-red-500 text-xl">
+            No results found.<br />
+            Try something else
+          </div>
         ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
-              {videos.map((video) => (
-                <VideoCard key={video.id} video={video} />
-              ))}
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8">
+            {videos.map(v => <VideoCard key={v.id} video={v} />)}
+          </div>
+        )}
 
-            <div className="text-center mt-12">
-              <button 
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white px-12 py-4 rounded-full font-bold text-lg transition"
-              >
-                {loadingMore ? "Loading..." : "LOAD MORE VIDEOS"}
-              </button>
-            </div>
-          </>
+        {videos.length > 0 && (
+          <div className="flex justify-center items-center gap-2 mt-12 flex-wrap">
+            <button onClick={() => loadVideos(searchQuery, Math.max(1, page - 1))} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Prev</button>
+            {Array.from({ length: 10 }, (_, i) => {
+              const p = page <= 5 ? i + 1 : page - 5 + i;
+              if (p > 500) return null;
+              return (
+                <button key={p} onClick={() => loadVideos(searchQuery, p)} className={`px-5 py-3 rounded-full font-bold ${page === p ? 'bg-[#FF9900] text-black' : 'bg-[#222] hover:bg-[#FF9900]'}`}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={() => loadVideos(searchQuery, page + 1)} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Next</button>
+          </div>
         )}
       </div>
-
-      <footer className="bg-[#080808] py-12 text-center text-gray-500 text-sm border-t border-gray-800">
-        © 2026 XVideos3.cam • Free XVIDEOS • XVIDEOS.com • XVIDEOS3.com • 18+ Only
-      </footer>
     </div>
   );
 }
