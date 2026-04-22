@@ -15,7 +15,7 @@ type Video = {
   views?: string;
 };
 
-const PER_PAGE = 60;   // ← 60 videos on laptop/desktop
+const PER_PAGE = 60;
 
 const fetchWithFallback = async (query: string, pageNum: number = 1) => {
   const searchTerm = query.trim() || "porn";
@@ -41,14 +41,13 @@ const fetchWithFallback = async (query: string, pageNum: number = 1) => {
   }
 };
 
-const categories = ["Hentai", "MILF", "Pinay", "Lesbian", "Anal", "Big Ass", "Latina", "Anime", "Asian", "Femboy"];
-
 export default function HomeClient() {
   const searchParams = useSearchParams();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
   const [showMenu, setShowMenu] = useState(false);
+  const [showVideoSub, setShowVideoSub] = useState(false);   // ← new state for sub panel
   const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
 
   const loadVideos = async (query: string = "", pageNum: number = 1) => {
@@ -72,14 +71,10 @@ export default function HomeClient() {
     loadVideos(searchQuery, 1);
   };
 
-  const handleCategoryClick = (cat: string) => {
-    setSearchQuery(cat);
-    loadVideos(cat, 1);
+  const handleSidebarClick = (term: string) => {
+    setSearchQuery(term);
+    loadVideos(term, 1);
     setShowMenu(false);
-  };
-
-  const changePage = (newPage: number) => {
-    loadVideos(searchQuery, newPage);
   };
 
   return (
@@ -103,16 +98,56 @@ export default function HomeClient() {
           </div>
           <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-2">☰</button>
         </div>
-        {showMenu && (
-          <div className="mt-3 bg-[#1a1a1a] border border-gray-700 rounded-xl shadow-xl py-2 max-h-96 overflow-auto">
-            {categories.map(cat => (
-              <button key={cat} onClick={() => handleCategoryClick(cat)} className="w-full text-left px-6 py-3 hover:bg-[#FF9900] hover:text-black transition text-lg">
-                {cat}
-              </button>
-            ))}
-          </div>
-        )}
       </header>
+
+      {showMenu && (
+        <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
+      {/* Close Button */}
+    <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
+      <button 
+        onClick={() => {
+          setShowMenu(false);
+          setShowVideoSub(false);
+        }}
+        className="text-4xl leading-none text-gray-400 hover:text-white"
+      >
+        ✕
+      </button>
+    </div>    
+          {/* VIDEOS with sub-panel */}
+       
+          <button 
+            onClick={() => setShowVideoSub(!showVideoSub)}
+            className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left"
+          >
+            ▶ VIDEOS
+          </button>
+
+          {/* Sub panel appears ONLY when VIDEOS is clicked */}
+          {showVideoSub && (
+            <div className="mt-2 px-6 space-y-3">
+              <button onClick={() => handleSidebarClick("1080p")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📽️</span><span className="text-white">1080 HD PORN 1080P</span></button>
+              <button onClick={() => handleSidebarClick("60fps")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎬</span><span className="text-white">60FPS PORN</span></button>
+              <button onClick={() => handleSidebarClick("4k")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">4️⃣K</span><span className="text-white">4K PORN</span></button>
+              <button onClick={() => handleSidebarClick("hd sex")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🔥</span><span className="text-white">HD SEX</span></button>
+              <button onClick={() => handleSidebarClick("top rated")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">⭐</span><span className="text-white">TOP RATED</span></button>
+              <button onClick={() => handleSidebarClick("amateur")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📹</span><span className="text-white">AMATEUR</span></button>
+              <button onClick={() => handleSidebarClick("solo")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">👩</span><span className="text-white">SOLO GIRLS</span></button>
+              <button onClick={() => handleSidebarClick("live")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📡</span><span className="text-white">ON-AIR</span></button>
+              <button onClick={() => handleSidebarClick("vr")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🕶️</span><span className="text-white">VR PORN</span></button>
+              <button onClick={() => handleSidebarClick("playlist")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📋</span><span className="text-white">PLAYLISTS</span></button>
+              <button onClick={() => handleSidebarClick("free porn")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎥</span><span className="text-white">FREE PORN</span></button>
+            </div>
+          )}
+    {/* 4K PORN - clickable */}
+    <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
+
+    {/* BEST VIDEOS - clickable */}
+    <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
+          <Link href="/categories" className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
+          <Link href="/pornstars" className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 py-10">
         <h1 className="text-4xl font-black text-[#FF9900] mb-8"></h1>
@@ -122,7 +157,7 @@ export default function HomeClient() {
             {[...Array(15)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
-          <div className="text-center py-20 text-red-500 text-xl">No results found.<br />Try something else</div>
+          <div className="text-center py-20 text-red-500 text-xl">No results found.<br /></div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
             {videos.map(v => (
@@ -135,17 +170,17 @@ export default function HomeClient() {
 
         {videos.length > 0 && (
           <div className="flex justify-center items-center gap-2 mt-12 flex-wrap">
-            <button onClick={() => changePage(Math.max(1, page - 1))} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Prev</button>
+            <button onClick={() => loadVideos(searchQuery, Math.max(1, page - 1))} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Prev</button>
             {Array.from({ length: 10 }, (_, i) => {
               const p = page <= 5 ? i + 1 : page - 5 + i;
               if (p > 500) return null;
               return (
-                <button key={p} onClick={() => changePage(p)} className={`px-5 py-3 rounded-full font-bold ${page === p ? 'bg-[#FF9900] text-black' : 'bg-[#222] hover:bg-[#FF9900]'}`}>
+                <button key={p} onClick={() => loadVideos(searchQuery, p)} className={`px-5 py-3 rounded-full font-bold ${page === p ? 'bg-[#FF9900] text-black' : 'bg-[#222] hover:bg-[#FF9900]'}`}>
                   {p}
                 </button>
               );
             })}
-            <button onClick={() => changePage(page + 1)} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Next</button>
+            <button onClick={() => loadVideos(searchQuery, page + 1)} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Next</button>
           </div>
         )}
       </div>
