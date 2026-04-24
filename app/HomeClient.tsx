@@ -18,7 +18,7 @@ type Video = {
 const PER_PAGE = 60;
 
 const fetchWithFallback = async (query: string, pageNum: number = 1) => {
-  const searchTerm = query.trim() || "big booty";
+  const searchTerm = query.trim() || "Trending";
   try {
     const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${PER_PAGE}&page=${pageNum}&order=most_viewed`, { cache: 'no-store' });
     const data = await res.json();
