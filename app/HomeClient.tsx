@@ -18,7 +18,7 @@ type Video = {
 const PER_PAGE = 60;
 
 const fetchWithFallback = async (query: string, pageNum: number = 1) => {
-  const searchTerm = query.trim() || "porn";
+  const searchTerm = query.trim() || "big booty";
   try {
     const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${PER_PAGE}&page=${pageNum}&order=most_viewed`, { cache: 'no-store' });
     const data = await res.json();
@@ -157,7 +157,7 @@ export default function HomeClient() {
             {[...Array(15)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />)}
           </div>
         ) : videos.length === 0 ? (
-          <div className="text-center py-20 text-red-500 text-xl">No results found.<br /></div>
+          <div className="text-center py-20 text-yellow-500 text-xl">No results found.<br /></div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
             {videos.map(v => (
