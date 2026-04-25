@@ -18,14 +18,14 @@ type Video = {
 const PER_PAGE = 60;
 
 const fetchWithFallback = async (query: string, pageNum: number = 1) => {
-  const searchTerm = query.trim() || "Trending";
+  const searchTerm = query.trim() || "step";
   try {
     const res = await fetch(`https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${PER_PAGE}&page=${pageNum}&order=most_viewed`, { cache: 'no-store' });
     const data = await res.json();
     if (data.videos?.length >= 5) return data.videos;
   } catch (e) {}
   try {
-    const res = await fetch(`https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=${encodeURIComponent(searchTerm)}&page=${pageNum}`);
+    const res = await fetch(`https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=all${encodeURIComponent(searchTerm)}&page=${pageNum}`);
     const data = await res.json();
     return (data.videos || []).map((v: any) => ({
       id: v.video_id,
@@ -47,7 +47,7 @@ export default function HomeClient() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || "");
   const [showMenu, setShowMenu] = useState(false);
-  const [showVideoSub, setShowVideoSub] = useState(false);   // ← new state for sub panel
+  const [showVideoSub, setShowVideoSub] = useState(false);
   const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
 
   const loadVideos = async (query: string = "", pageNum: number = 1) => {
@@ -64,6 +64,14 @@ export default function HomeClient() {
     setSearchQuery(q);
     setPage(p);
     loadVideos(q, p);
+    // Restore scroll position after load (for browser back)
+    setTimeout(() => {
+      const savedScroll = sessionStorage.getItem('scrollPosition');
+      if (savedScroll) {
+        window.scrollTo({ top: parseInt(savedScroll), behavior: 'instant' });
+        sessionStorage.removeItem('scrollPosition');
+      }
+    }, 100);
   }, [searchParams]);
 
   const handleSearch = (e?: React.FormEvent) => {
@@ -75,6 +83,15 @@ export default function HomeClient() {
     setSearchQuery(term);
     loadVideos(term, 1);
     setShowMenu(false);
+  };
+
+  const handlePageClick = (pageNum: number) => {
+    sessionStorage.setItem('scrollPosition', window.scrollY.toString());
+    loadVideos(searchQuery, pageNum);
+  };
+
+  const handleVideoClick = () => {
+    sessionStorage.setItem('scrollPosition', window.scrollY.toString());
   };
 
   return (
@@ -102,20 +119,17 @@ export default function HomeClient() {
 
       {showMenu && (
         <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
-      {/* Close Button */}
-    <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
-      <button 
-        onClick={() => {
-          setShowMenu(false);
-          setShowVideoSub(false);
-        }}
-        className="text-4xl leading-none text-gray-400 hover:text-white"
-      >
-        ✕
-      </button>
-    </div>    
-          {/* VIDEOS with sub-panel */}
-       
+          <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
+            <button 
+              onClick={() => {
+                setShowMenu(false);
+                setShowVideoSub(false);
+              }}
+              className="text-4xl leading-none text-gray-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>    
           <button 
             onClick={() => setShowVideoSub(!showVideoSub)}
             className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left"
@@ -123,7 +137,6 @@ export default function HomeClient() {
             ▶ VIDEOS
           </button>
 
-          {/* Sub panel appears ONLY when VIDEOS is clicked */}
           {showVideoSub && (
             <div className="mt-2 px-6 space-y-3">
               <button onClick={() => handleSidebarClick("1080p")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📽️</span><span className="text-white">1080 HD PORN 1080P</span></button>
@@ -139,11 +152,8 @@ export default function HomeClient() {
               <button onClick={() => handleSidebarClick("free porn")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎥</span><span className="text-white">FREE PORN</span></button>
             </div>
           )}
-    {/* 4K PORN - clickable */}
-    <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
-
-    {/* BEST VIDEOS - clickable */}
-    <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
+          <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
+          <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
           <Link href="/categories" className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
           <Link href="/pornstars" className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
         </div>
@@ -161,7 +171,13 @@ export default function HomeClient() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
             {videos.map(v => (
-              <Link key={v.id} href={`/watch/${v.id}`} className="block">
+              <Link 
+                key={v.id} 
+                href={`/watch/${v.id}`} 
+                className="block"
+                onClick={handleVideoClick}
+                scroll={false}
+              >
                 <VideoCard video={v} />
               </Link>
             ))}
@@ -170,20 +186,32 @@ export default function HomeClient() {
 
         {videos.length > 0 && (
           <div className="flex justify-center items-center gap-2 mt-12 flex-wrap">
-            <button onClick={() => loadVideos(searchQuery, Math.max(1, page - 1))} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Prev</button>
+            <button onClick={() => handlePageClick(Math.max(1, page - 1))} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Prev</button>
             {Array.from({ length: 10 }, (_, i) => {
               const p = page <= 5 ? i + 1 : page - 5 + i;
               if (p > 500) return null;
               return (
-                <button key={p} onClick={() => loadVideos(searchQuery, p)} className={`px-5 py-3 rounded-full font-bold ${page === p ? 'bg-[#FF9900] text-black' : 'bg-[#222] hover:bg-[#FF9900]'}`}>
+                <button 
+                  key={p} 
+                  onClick={() => handlePageClick(p)} 
+                  className={`px-5 py-3 rounded-full font-bold ${page === p ? 'bg-[#FF9900] text-black' : 'bg-[#222] hover:bg-[#FF9900]'}`}
+                >
                   {p}
                 </button>
               );
             })}
-            <button onClick={() => loadVideos(searchQuery, page + 1)} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Next</button>
+            <button onClick={() => handlePageClick(page + 1)} className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] rounded-full font-bold">Next</button>
           </div>
         )}
       </div>
+
+      {/* Floating Back Button */}
+      <button
+        onClick={() => window.history.back()}
+        className="fixed bottom-6 right-6 bg-[#FF9900] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-2xl z-[10000] hover:bg-[#ffaa33] text-3xl"
+      >
+        ←
+      </button>
     </div>
   );
 }
