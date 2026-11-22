@@ -65,9 +65,9 @@ export default async function WatchPage({
 }) {
   const { id } = await params;
   const video = await getVideoById(id);
+const durationSeconds =
+  Number(video?.length_sec) || (Number(video?.length_min) || 0) * 60;
 
-  const durationSeconds =
-    (video?.length_min || 0) * 60 + (video?.length_sec || 0);
   const durationIso = `PT${Math.max(1, durationSeconds)}S`;
 
   const videoSchema = video
