@@ -3,7 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
-const pornstarsList = [
+interface Pornstar {
+  name: string;
+  count: string;
+}
+
+const pornstarsList: Pornstar[] = [
   { name: "Angela White", count: "695 Videos" },
   { name: "Riley Reid", count: "962 Videos" },
   { name: "Violet Myers", count: "779 Videos" },
@@ -66,17 +71,43 @@ const pornstarsList = [
   { name: "Reagan Foxx", count: "609 Videos" },
   { name: "Eliza Ibarra", count: "313 Videos" },
   { name: "Ariella Ferrera", count: "263 Videos" },
-  { name: "Mick Blue", count: "598 Videos" }
+  { name: "Mick Blue", count: "598 Videos" },
 ];
 
-async function fetchRealStarImage(name) {
-  const cacheKey = `star_thumb_v1_${name}`;
+// Simple queue so we only run 3 requests at a time (prevents API rate-limiting)
+let activeStarFetches = 0;
+const starQueue: Array<() => void> = [];
+
+function enqueueStarFetch<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      activeStarFetches++;
+      task()
+        .then(resolve)
+        .catch(reject)
+        .finally(() => {
+          activeStarFetches--;
+          const next = starQueue.shift();
+          if (next) next();
+        });
+    };
+
+    if (activeStarFetches < 3) {
+      run();
+    } else {
+      starQueue.push(run);
+    }
+  });
+}
+
+async function fetchRealStarImage(name: string): Promise<string | null> {
+  const cacheKey = `star_thumb_v2_${name}`;
   try {
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) return cached;
   } catch {}
 
-  let imgUrl = null;
+  let imgUrl: string | null = null;
 
   // 1. Try Wikipedia REST API for a verified performer portrait
   try {
@@ -95,7 +126,7 @@ async function fetchRealStarImage(name) {
         bio.includes('model');
 
       if (wikiData.type === 'standard' && isPerformer && wikiData.thumbnail?.source) {
-        imgUrl = wikiData.thumbnail.source;
+        imgUrl = wikiData.thumbnail.source as string;
       }
     }
   } catch {}
@@ -108,12 +139,12 @@ async function fetchRealStarImage(name) {
       );
       if (epRes.ok) {
         const epData = await epRes.json();
-        if (epData.videos && epData.videos.length > 0) {
-          const exactMatch = epData.videos.find((v) =>
+        if (Array.isArray(epData.videos) && epData.videos.length > 0) {
+          const exactMatch = epData.videos.find((v: { title?: string }) =>
             v.title?.toLowerCase().includes(name.toLowerCase())
           );
           const chosen = exactMatch || epData.videos[0];
-          imgUrl = chosen.default_thumb?.src || null;
+          imgUrl = chosen?.default_thumb?.src || null;
         }
       }
     } catch {}
@@ -128,10 +159,11 @@ async function fetchRealStarImage(name) {
   return imgUrl;
 }
 
-function PornstarCard({ star }) {
-  const [imgSrc, setImgSrc] = useState(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const cardRef = useRef(null);
+function PornstarCard({ star }: { star: Pornstar }) {
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState<boolean>(false);
+  const [isVisible, setIsVisible] = useState<boolean>(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -141,7 +173,7 @@ function PornstarCard({ star }) {
           observer.disconnect();
         }
       },
-      { rootMargin: '250px' }
+      { rootMargin: '200px' }
     );
 
     if (cardRef.current) observer.observe(cardRef.current);
@@ -152,8 +184,13 @@ function PornstarCard({ star }) {
     if (!isVisible) return;
     let active = true;
 
-    fetchRealStarImage(star.name).then((url) => {
-      if (active && url) setImgSrc(url);
+    enqueueStarFetch(() => fetchRealStarImage(star.name)).then((url) => {
+      if (!active) return;
+      if (url) {
+        setImgSrc(url);
+      } else {
+        setFailed(true);
+      }
     });
 
     return () => {
@@ -162,30 +199,31 @@ function PornstarCard({ star }) {
   }, [isVisible, star.name]);
 
   return (
-    <Link
-      ref={cardRef}
-      href={`/?q=${encodeURIComponent(star.name)}`}
-      className="block group"
-    >
-      <div className="relative overflow-hidden rounded-2xl bg-[#1a1a1a]">
-        {imgSrc ? (
-          <img
-            src={imgSrc}
-            alt={star.name}
-            loading="lazy"
-            className="w-full aspect-[4/3] object-cover object-top group-hover:scale-105 transition"
-          />
-        ) : (
-          <div className="w-full aspect-[4/3] bg-[#222] animate-pulse flex items-center justify-center text-xs text-neutral-500">
-            Loading...
+    <div ref={cardRef}>
+      <Link href={`/?q=${encodeURIComponent(star.name)}`} className="block group">
+        <div className="relative overflow-hidden rounded-2xl bg-[#1a1a1a]">
+          {imgSrc && !failed ? (
+            <img
+              src={imgSrc}
+              alt={star.name}
+              loading="lazy"
+              onError={() => setFailed(true)}
+              className="w-full aspect-[4/3] object-cover object-top group-hover:scale-105 transition"
+            />
+          ) : failed ? (
+            <div className="w-full aspect-[4/3] bg-gradient-to-br from-[#262626] to-[#111] flex items-center justify-center text-3xl font-bold text-[#FF9900]/70">
+              {star.name.charAt(0)}
+            </div>
+          ) : (
+            <div className="w-full aspect-[4/3] bg-[#222] animate-pulse" />
+          )}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3">
+            <p className="font-bold text-lg">{star.name}</p>
+            <p className="text-[#FF9900] text-sm">{star.count}</p>
           </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3">
-          <p className="font-bold text-lg">{star.name}</p>
-          <p className="text-[#FF9900] text-sm">{star.count}</p>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
