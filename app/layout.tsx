@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
-import GlobalUI from "./GlobalUl";
+import GlobalUI from "./GlobalUI";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://xvideos3.cam"),
@@ -65,9 +66,25 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://www.eporner.com" />
+        <link rel="preconnect" href="https://static-ca-cdn.eporner.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://poweredby.jads.co" />
+        <link rel="dns-prefetch" href="https://js.juicyads.com" />
+      </head>
       <body className="bg-[#0a0a0a] text-[#ddd]">
         {children}
         <GlobalUI />
+
+        {/* JuicyAds v3.2P Popunder */}
+        <Script id="juicyads-popunder-vars" strategy="afterInteractive">
+          {`var juicy_tags = ['a', 'img'];`}
+        </Script>
+        <Script
+          id="juicyads-popunder-script"
+          src="https://js.juicyads.com/jp.php?c=4474z2y2s224u4r2p2e4438444&u=https%3A%2F%2Fwww.juicyads.rocks"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
