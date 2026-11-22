@@ -13,11 +13,14 @@ import {
   resolveContentContext,
 } from './lib/userPrefs';
 
-type Video = StoredVideo;
+type Video = Omit<StoredVideo, 'views'> & {
+  views?: string;
+};
+
 type SearchHint = { label: string; type: 'category' | 'pornstar' | 'desi' | 'video' };
 
 interface HomeClientProps {
-  initialVideos?: Video[];
+  initialVideos?: StoredVideo[];
   initialQuery?: string;
   initialPage?: number;
 }
@@ -41,7 +44,14 @@ function scrollTopNow() {
   document.body.scrollTop = 0;
 }
 
-function validThumb(v: Video): boolean {
+function normalizeCardVideo(v: StoredVideo): Video {
+  return {
+    ...v,
+    views: v.views !== undefined && v.views !== null ? String(v.views) : undefined,
+  };
+}
+
+function validThumb(v: StoredVideo): boolean {
   const src = v?.default_thumb?.src?.trim() || '';
   return Boolean(v?.id && v?.title && src.startsWith('http'));
 }
@@ -63,11 +73,11 @@ async function fetchVideos(query: string, pageNum = 1, perPage = PER_PAGE, order
     );
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data)) return (data as Video[]).filter(validThumb);
+      if (Array.isArray(data)) {
+        return (data as StoredVideo[]).filter(validThumb).map(normalizeCardVideo);
+      }
     }
-  } catch {
-    // Ignore transient network error
-  }
+  } catch {}
   return [];
 }
 
@@ -84,7 +94,7 @@ export default function HomeClient({ initialVideos = [], initialQuery = '', init
 
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
-  const validInitial = initialVideos.filter(validThumb);
+  const validInitial = initialVideos.filter(validThumb).map(normalizeCardVideo);
   const hasSSR = validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
   const [videos, setVideos] = useState<Video[]>(hasSSR ? validInitial : []);
@@ -126,7 +136,7 @@ export default function HomeClient({ initialVideos = [], initialQuery = '', init
       setRecHeading(`Picked For You • ${ctx.relatedPeerQuery}`);
     }
 
-    setRecentHistory(getWatchHistory(5).filter(validThumb));
+    setRecentHistory(getWatchHistory(5).filter(validThumb).map(normalizeCardVideo));
 
     const useSSR = validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
     if (!useSSR) setLoading(true);
@@ -179,9 +189,7 @@ export default function HomeClient({ initialVideos = [], initialQuery = '', init
           const data: { hints?: SearchHint[] } = await res.json();
           if (Array.isArray(data.hints)) setHints(data.hints);
         }
-      } catch {
-        // Ignore
-      }
+      } catch {}
     }, 150);
     return () => clearTimeout(timer);
   }, [searchQuery, showHints]);
@@ -347,7 +355,6 @@ export default function HomeClient({ initialVideos = [], initialQuery = '', init
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Logically Matched Similar Videos */}
         {!loading && similarVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
             <h2 className="text-xl md:text-2xl font-black text-[#FF9900] mb-6 capitalize">{simHeading}</h2>
@@ -361,7 +368,6 @@ export default function HomeClient({ initialVideos = [], initialQuery = '', init
           </section>
         )}
 
-        {/* Logically Paired Peer Pornstars / Sub-Categories */}
         {!loading && forYouVideos.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
             <h2 className="text-xl md:text-2xl font-black text-[#FF9900] mb-6 capitalize">{recHeading}</h2>
