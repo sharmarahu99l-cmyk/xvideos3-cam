@@ -10,14 +10,11 @@ import {
   trackUserInterest,
   getTopPreferences,
   getWatchHistory,
+  resolveContentContext,
 } from './lib/userPrefs';
 
 type Video = StoredVideo;
-
-type SearchHint = {
-  label: string;
-  type: 'category' | 'pornstar' | 'desi' | 'video';
-};
+type SearchHint = { label: string; type: 'category' | 'pornstar' | 'desi' | 'video' };
 
 interface HomeClientProps {
   initialVideos?: Video[];
@@ -28,482 +25,223 @@ interface HomeClientProps {
 const PER_PAGE = 30;
 const MAX_PAGES = 200;
 
-const FALLBACK_TOPICS = [
-  'desi bhabhi',
-  'indian aunty',
-  'desi homemade',
-  'pakistani mms',
-  'hindi audio',
-  'desi viral',
-  'indian wife',
-  'punjabi desi',
-  'desi couple',
-  'desi college girl',
-];
-
-const SEO_DESI_HUB_LINKS = [
+const SEO_LINKS = [
   'Desi Videos', 'Desi Porn', 'Desi MMS', 'Viral Desi Videos', 'New Desi Videos',
   'Desi Bhabhi', 'Indian Bhabhi', 'Desi Aunty', 'Indian Aunty', 'Indian Porn',
   'Pakistani MMS', 'Pakistani Sex', 'Desi Chudai', 'Hindi Audio Sex', 'Punjabi Desi',
-  'Punjabi Kudi', 'Desi Homemade', 'Indian Homemade', 'Desi Couple', 'Desi College Girl',
-  'Desi Village Girl', 'Desi Saree Sex', 'Bhabhi Devar', 'South Indian Desi', 'Tamil Desi',
-  'Telugu Desi', 'Bengali Bhabhi', 'Marathi Bhabhi', 'Gujarati Aunty', 'Mallu Aunty',
-  'Bhojpuri Desi', 'Desi Leaked Scandal', 'Desi Hidden Cam', 'Desi Suhag Raat', 'Indian Wife',
+  'Desi Homemade', 'Indian Homemade', 'Desi Couple', 'Desi College Girl', 'Desi Saree Sex',
+  'Bhabhi Devar', 'South Indian Desi', 'Tamil Desi', 'Telugu Desi', 'Bengali Bhabhi',
+  'Marathi Bhabhi', 'Gujarati Aunty', 'Mallu Aunty', 'Bhojpuri Desi', 'Indian Wife',
 ];
 
-const INSTANT_DESI = [
-  "Desi", "Desi Videos", "Desi Porn", "Desi Bhabhi", "Desi Aunty", "Desi MMS",
-  "Desi Viral MMS", "Viral Desi Videos", "New Desi Videos", "Desi Sex",
-  "Desi Chudai", "Desi Hardcore", "Desi Homemade", "Desi Couple", "Desi College Girl",
-  "Desi Village Girl", "Desi Saree Sex", "Desi Salwar Suit", "Desi Hindi Audio",
-  "Desi Punjabi", "Punjabi Kudi", "Pakistani MMS", "Pakistani Sex", "Indian Bhabhi",
-  "Indian Aunty", "Indian MMS", "Indian Wife", "Indian Couple", "Indian Homemade",
-  "Bhabhi Devar", "Hindi Audio Sex", "Tamil Desi", "Telugu Desi", "Bengali Bhabhi",
-  "Marathi Bhabhi", "Gujarati Aunty", "Mallu Aunty", "Bhojpuri Desi", "Desi Stepmom",
-  "Desi Suhag Raat", "Desi Leaked Scandal", "Desi Hidden Cam", "Desi Big Boobs", "Desi Big Ass",
-];
-
-const INSTANT_CATEGORIES = [
-  "Japanese", "Anal", "HD Porn 1080p", "Teen", "VR Porn", "Asian", "Big Tits",
-  "Shemale", "MILF", "Gay", "Ebony", "Homemade", "Indian", "Interracial",
-  "Amateur", "Lesbian", "60 FPS", "Big Ass", "POV", "Mature", "Creampie",
-  "Hentai", "BBW", "Hardcore", "Threesome", "Latina", "Big Dick", "Pornstar",
-  "Double Penetration", "Vintage", "Group Sex", "Blowjob", "Cumshot",
-  "Masturbation", "Students", "Blonde", "Petite", "Orgy", "Webcam", "Office",
-  "BDSM", "Public", "Brunette", "Older Men", "Massage", "Lingerie", "Toys",
-  "Hotel", "Fat", "Outdoor", "Squirt", "Fetish", "Redhead", "Housewives",
-  "Sleep", "Small Tits", "Swinger", "Bukkake", "Uniform", "Striptease",
-  "Bondage", "For Women", "Nurses", "Handjob", "Fisting", "HQ Porn",
-  "Bisexual", "HD Sex", "Footjob", "ASMR", "Doctor",
-];
-
-const INSTANT_PORNSTARS = [
-  "Angela White", "Riley Reid", "Violet Myers", "Dani Daniels", "Ava Addams",
-  "Lana Rhoades", "Abella Danger", "Lauren Phillips", "Cory Chase", "Mia Khalifa",
-  "Lena Paul", "Valentina Nappi", "Brandi Love", "Natasha Nice", "Adriana Chechik",
-  "Savannah Bond", "Lisa Ann", "Manuel Ferrara", "Mia Malkova", "Alexis Fawx",
-  "Sara Jay", "Yorgelis Carrillo", "Aidra Fox", "Blake Blossom", "Little Caprice",
-  "Nicole Aniston", "Cherie DeVille", "Alexis Texas", "Melody Marks", "Kendra Lust",
-  "Mandy Muse", "Lulu Chu", "Kenzie Reeves", "Jennifer White", "Abigaiil Morris",
-  "Emily Willis", "Dee Williams", "Jane Wilde", "Alyx Star", "Maria Nagai",
-  "Kelsi Monroe", "Alex Coal", "Lexi Luna", "Payton Preslee", "Syren De Mer",
-  "Johnny Love", "Alexandra Cat", "Gabbie Carter", "Hazel Moore", "Skylar Vox",
-  "Bridgette B", "Damion Dayski", "Jada Stevens", "Julia Ann", "Phoenix Marie",
-  "Anissa Kate", "Johnny Sins", "Chanel Preston", "Alura Jenson", "Reagan Foxx",
-  "Eliza Ibarra", "Ariella Ferrera", "Mick Blue",
-];
-
-function scrollToPageTop() {
+function scrollTopNow() {
   if (typeof window === 'undefined') return;
   window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
 }
 
-function hasValidThumbnail(v: Video): boolean {
+function validThumb(v: Video): boolean {
   const src = v?.default_thumb?.src?.trim() || '';
   return Boolean(v?.id && v?.title && src.startsWith('http'));
 }
 
-function getInstantLocalHints(query: string): SearchHint[] {
-  const lowerQ = query.trim().toLowerCase();
-  if (!lowerQ) return [];
-
-  const seen = new Set<string>();
-  const out: SearchHint[] = [];
-  const addMatches = (list: string[], type: SearchHint['type']) => {
-    list
-      .filter((item) => item.toLowerCase().startsWith(lowerQ))
-      .forEach((item) => {
-        const k = item.toLowerCase();
-        if (!seen.has(k)) {
-          seen.add(k);
-          out.push({ label: item, type });
-        }
-      });
-    list
-      .filter((item) => !item.toLowerCase().startsWith(lowerQ) && item.toLowerCase().includes(lowerQ))
-      .forEach((item) => {
-        const k = item.toLowerCase();
-        if (!seen.has(k)) {
-          seen.add(k);
-          out.push({ label: item, type });
-        }
-      });
-  };
-
-  addMatches(INSTANT_DESI, 'desi');
-  addMatches(INSTANT_CATEGORIES, 'category');
-  addMatches(INSTANT_PORNSTARS, 'pornstar');
-  return out;
-}
-
-function getPageWindow(current: number, maxPages: number = MAX_PAGES): number[] {
-  const windowSize = 9;
+function getPageWindow(current: number): number[] {
   let start = Math.max(1, current - 4);
-  const end = Math.min(maxPages, start + windowSize - 1);
-  start = Math.max(1, end - windowSize + 1);
-
+  const end = Math.min(MAX_PAGES, start + 8);
+  start = Math.max(1, end - 8);
   const pages: number[] = [];
-  for (let p = start; p <= end; p++) {
-    pages.push(p);
-  }
+  for (let p = start; p <= end; p++) pages.push(p);
   return pages;
 }
 
-async function fetchVideos(
-  query: string,
-  pageNum: number = 1,
-  perPage: number = PER_PAGE,
-  order: string = 'most_viewed'
-): Promise<Video[]> {
-  const searchTerm = query.trim() || 'desi';
+async function fetchVideos(query: string, pageNum = 1, perPage = PER_PAGE, order = 'most_viewed'): Promise<Video[]> {
+  const term = query.trim() || 'desi';
   try {
     const res = await fetch(
-      `/api/search?q=${encodeURIComponent(searchTerm)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`
+      `/api/search?q=${encodeURIComponent(term)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`
     );
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data)) {
-        return (data as Video[]).filter(hasValidThumbnail);
-      }
+      if (Array.isArray(data)) return (data as Video[]).filter(validThumb);
     }
   } catch {
-    // Return empty array on network error
+    // Ignore transient network error
   }
   return [];
 }
 
-const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
-  desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
-  category: { text: 'CAT', cls: 'bg-blue-500/20 text-blue-300' },
-  pornstar: { text: 'STAR', cls: 'bg-pink-500/20 text-pink-300' },
-  video: { text: 'VIDEO', cls: 'bg-neutral-700 text-neutral-300' },
+const BADGE: Record<SearchHint['type'], string> = {
+  desi: 'bg-[#FF9900]/20 text-[#FF9900]',
+  category: 'bg-blue-500/20 text-blue-300',
+  pornstar: 'bg-pink-500/20 text-pink-300',
+  video: 'bg-neutral-700 text-neutral-300',
 };
 
-export default function HomeClient({
-  initialVideos = [],
-  initialQuery = '',
-  initialPage = 1,
-}: HomeClientProps) {
+export default function HomeClient({ initialVideos = [], initialQuery = '', initialPage = 1 }: HomeClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
+  const validInitial = initialVideos.filter(validThumb);
+  const hasSSR = validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
-  const validInitial = initialVideos.filter(hasValidThumbnail);
-  const hasSSRMatch =
-    validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
-
-  const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? validInitial : []);
+  const [videos, setVideos] = useState<Video[]>(hasSSR ? validInitial : []);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
   const [forYouVideos, setForYouVideos] = useState<Video[]>([]);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
-  const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
-  const [loadingMore, setLoadingMore] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
-  const [showMenu, setShowMenu] = useState<boolean>(false);
-  const [showVideoSub, setShowVideoSub] = useState<boolean>(false);
-  const [page, setPage] = useState<number>(urlPage);
-  const [loadedExtraPages, setLoadedExtraPages] = useState<number>(0);
-
+  const [recHeading, setRecHeading] = useState('Picked For You');
+  const [simHeading, setSimHeading] = useState('Similar Videos You May Also Like');
+  const [loading, setLoading] = useState(!hasSSR);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
+  const [showMenu, setShowMenu] = useState(false);
+  const [page, setPage] = useState(urlPage);
+  const [extraPages, setExtraPages] = useState(0);
   const [hints, setHints] = useState<SearchHint[]>([]);
-  const [showHints, setShowHints] = useState<boolean>(false);
-  const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
+  const [showHints, setShowHints] = useState(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
-  const suggestAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let active = true;
+    scrollTopNow();
+    setSearchQuery(urlQuery);
+    setPage(urlPage);
+    setExtraPages(0);
+    setSimilarVideos([]);
+    setForYouVideos([]);
 
-    const run = async () => {
-      scrollToPageTop();
-      setSearchQuery(urlQuery);
-      setPage(urlPage);
-      setLoadedExtraPages(0);
-      setSimilarVideos([]);
-      setForYouVideos([]);
+    if (urlQuery.trim()) trackUserInterest([urlQuery.trim()]);
 
-      if (urlQuery.trim()) {
-        trackUserInterest([urlQuery.trim()]);
-        document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
-      } else if (urlPage > 1) {
-        document.title = `Desi Videos & HD Porn - Page ${urlPage} | HubTube - XVideos3`;
-      } else {
-        document.title = 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3';
-      }
+    const prefs = getTopPreferences(4);
+    const activeSeed = urlQuery.trim() || prefs[0] || 'desi bhabhi';
+    const ctx = resolveContentContext(activeSeed, '', urlPage);
 
-      // Rotate topic + page offset on every page change so Picked For You & Similar Videos always refresh
-      const prefs = getTopPreferences(5);
-      const topicPool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
-      const prefQuery = topicPool[(urlPage - 1) % topicPool.length];
-      const similarQuery = FALLBACK_TOPICS[(urlPage + 2) % FALLBACK_TOPICS.length];
-      setRecentHistory(getWatchHistory(5).filter(hasValidThumbnail));
+    if (ctx.type === 'pornstar') {
+      setSimHeading(`More ${ctx.primarySubject} Videos`);
+      setRecHeading(`Picked For You • ${ctx.relatedPeerQuery}`);
+    } else {
+      setSimHeading(`Similar ${ctx.primarySubject} Videos`);
+      setRecHeading(`Picked For You • ${ctx.relatedPeerQuery}`);
+    }
 
-      const usingSSRMain =
-        validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
+    setRecentHistory(getWatchHistory(5).filter(validThumb));
 
-      if (!usingSSRMain) {
-        setLoading(true);
-      }
+    const useSSR = validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
+    if (!useSSR) setLoading(true);
 
-      const [fetchedMain, similar, personalized] = await Promise.all([
-        usingSSRMain
-          ? Promise.resolve(validInitial)
-          : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
-        fetchVideos(urlQuery || similarQuery, urlPage + 3, 18, 'top-rated'),
-        fetchVideos(prefQuery, urlPage + 5, 18, 'latest'),
-      ]);
-
-      let fetched = fetchedMain;
-      if (fetched.length === 0) {
-        const fallbackTopic = FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
-        fetched = await fetchVideos(fallbackTopic, (urlPage % 20) + 1, PER_PAGE, 'most_viewed');
-      }
-
+    Promise.all([
+      useSSR ? Promise.resolve(validInitial) : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
+      fetchVideos(ctx.similarQuery, urlPage + 2, 18, 'top-rated'),
+      fetchVideos(ctx.relatedPeerQuery, urlPage, 18, 'most_viewed'),
+    ]).then(([mainList, simList, recList]) => {
       if (!active) return;
+      const seen = new Set<string>();
+      const dedupe = (arr: Video[]) =>
+        arr.filter((v) => {
+          if (!validThumb(v) || seen.has(v.id)) return false;
+          seen.add(v.id);
+          return true;
+        });
 
-      const seenIds = new Set<string>();
-      const uniqueMain: Video[] = [];
-      for (const v of fetched) {
-        if (hasValidThumbnail(v) && !seenIds.has(v.id)) {
-          seenIds.add(v.id);
-          uniqueMain.push(v);
-        }
-      }
-
-      const uniqueSimilar: Video[] = [];
-      for (const v of similar) {
-        if (hasValidThumbnail(v) && !seenIds.has(v.id)) {
-          seenIds.add(v.id);
-          uniqueSimilar.push(v);
-        }
-      }
-
-      const uniqueForYou: Video[] = [];
-      for (const v of personalized) {
-        if (hasValidThumbnail(v) && !seenIds.has(v.id)) {
-          seenIds.add(v.id);
-          uniqueForYou.push(v);
-        }
-      }
-
-      setVideos(uniqueMain);
-      setSimilarVideos(uniqueSimilar.slice(0, 10));
-      setForYouVideos(uniqueForYou.slice(0, 10));
+      setVideos(dedupe(mainList));
+      setSimilarVideos(dedupe(simList).slice(0, 10));
+      setForYouVideos(dedupe(recList).slice(0, 10));
       setLoading(false);
-    };
+    });
 
-    run();
     return () => {
       active = false;
     };
   }, [urlQuery, urlPage, initialQuery, initialPage]);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const onDocClick = (e: MouseEvent) => {
       if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
         setShowHints(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
-    if (!showHints || trimmed.length === 0) {
+    if (!showHints || !trimmed) {
       setHints([]);
-      setActiveHintIdx(-1);
       return;
     }
-
-    const local = getInstantLocalHints(trimmed);
-    setHints(local);
-    setActiveHintIdx(-1);
-
     const timer = setTimeout(async () => {
-      if (suggestAbortRef.current) suggestAbortRef.current.abort();
-      const controller = new AbortController();
-      suggestAbortRef.current = controller;
-
       try {
-        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
-          signal: controller.signal,
-        });
-        if (!res.ok) return;
-        const data: { hints?: SearchHint[] } = await res.json();
-        if (Array.isArray(data.hints)) {
-          setHints(data.hints);
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`);
+        if (res.ok) {
+          const data: { hints?: SearchHint[] } = await res.json();
+          if (Array.isArray(data.hints)) setHints(data.hints);
         }
       } catch {
-        // Keep local hints on abort
+        // Ignore
       }
-    }, 140);
-
+    }, 150);
     return () => clearTimeout(timer);
   }, [searchQuery, showHints]);
 
-  const navigateToSearch = (term: string, targetPage: number = 1) => {
+  const goPage = (term: string, targetPage = 1) => {
     setShowHints(false);
     setShowMenu(false);
-    scrollToPageTop();
+    scrollTopNow();
     const safePage = Math.min(MAX_PAGES, Math.max(1, targetPage));
     const params = new URLSearchParams();
     if (term.trim()) params.set('q', term.trim());
     if (safePage > 1) params.set('page', String(safePage));
-    const qs = params.toString();
-    router.push(qs ? `/?${qs}` : '/', { scroll: true });
-  };
-
-  const handleSearch = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    navigateToSearch(searchQuery, 1);
-  };
-
-  const handleHintSelect = (label: string) => {
-    setSearchQuery(label);
-    navigateToSearch(label, 1);
-  };
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showHints || hints.length === 0) {
-      if (e.key === 'Enter') handleSearch();
-      return;
-    }
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveHintIdx((prev) => (prev + 1) % hints.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveHintIdx((prev) => (prev <= 0 ? hints.length - 1 : prev - 1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeHintIdx >= 0 && hints[activeHintIdx]) {
-        handleHintSelect(hints[activeHintIdx].label);
-      } else {
-        handleSearch();
-      }
-    } else if (e.key === 'Escape') {
-      setShowHints(false);
-    }
-  };
-
-  const handleSidebarClick = (term: string) => {
-    setSearchQuery(term);
-    navigateToSearch(term, 1);
-  };
-
-  const handlePageClick = (pageNum: number) => {
-    navigateToSearch(urlQuery, pageNum);
+    router.push(params.toString() ? `/?${params.toString()}` : '/', { scroll: true });
   };
 
   const handleLoadMore = async () => {
     if (loadingMore) return;
     setLoadingMore(true);
-
-    const nextStep = loadedExtraPages + 1;
-    const nextBatchPage = page + nextStep;
-    const more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
-
-    const existingIds = new Set(videos.map((v) => v.id));
-    let uniqueNew = more.filter((v) => hasValidThumbnail(v) && !existingIds.has(v.id));
-
-    if (uniqueNew.length < 10) {
-      const prefs = getTopPreferences(5);
-      const pool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
-      const fallbackTopic = pool[nextStep % pool.length];
-      const extraBatch = await fetchVideos(fallbackTopic, (nextStep % 20) + 1, PER_PAGE, 'latest');
-      uniqueNew = [
-        ...uniqueNew,
-        ...extraBatch.filter((v) => hasValidThumbnail(v) && !existingIds.has(v.id)),
-      ];
+    const nextStep = extraPages + 1;
+    const more = await fetchVideos(urlQuery, page + nextStep, PER_PAGE, 'most_viewed');
+    const seen = new Set(videos.map((v) => v.id));
+    const fresh = more.filter((v) => validThumb(v) && !seen.has(v.id));
+    if (fresh.length > 0) {
+      setVideos((prev) => [...prev, ...fresh]);
+      setExtraPages(nextStep);
     }
-
-    if (uniqueNew.length > 0) {
-      const dedupedBatch: Video[] = [];
-      const batchSeen = new Set(existingIds);
-      for (const v of uniqueNew) {
-        if (!batchSeen.has(v.id)) {
-          batchSeen.add(v.id);
-          dedupedBatch.push(v);
-        }
-      }
-      setVideos((prev) => [...prev, ...dedupedBatch]);
-      setLoadedExtraPages(nextStep);
-    }
-
     setLoadingMore(false);
   };
 
-  const pageWindow = getPageWindow(page, MAX_PAGES);
+  const pageWindow = getPageWindow(page);
 
-  const renderPaginationBar = () => (
-    <nav
-      aria-label="Pagination"
-      className="flex justify-center items-center gap-2 flex-wrap my-6"
-    >
+  const renderPagination = () => (
+    <nav aria-label="Pagination" className="flex justify-center items-center gap-2 flex-wrap my-6">
       <button
         type="button"
-        onClick={() => handlePageClick(Math.max(1, page - 1))}
+        onClick={() => goPage(urlQuery, page - 1)}
         disabled={page <= 1}
-        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm md:text-base"
+        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm"
       >
-        ← Back
+        Back
       </button>
-
-      {pageWindow[0] > 1 && (
-        <>
-          <button
-            type="button"
-            onClick={() => handlePageClick(1)}
-            className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
-          >
-            1
-          </button>
-          {pageWindow[0] > 2 && <span className="px-1 text-gray-500 font-bold">…</span>}
-        </>
-      )}
-
       {pageWindow.map((p) => (
         <button
           key={p}
           type="button"
-          onClick={() => handlePageClick(p)}
-          className={`px-4 py-2.5 rounded-full font-bold transition text-sm md:text-base ${
-            page === p
-              ? 'bg-[#FF9900] text-black shadow-md'
-              : 'bg-[#222] hover:bg-[#FF9900] hover:text-black text-white'
+          onClick={() => goPage(urlQuery, p)}
+          className={`px-4 py-2.5 rounded-full font-bold transition text-sm ${
+            page === p ? 'bg-[#FF9900] text-black' : 'bg-[#222] hover:bg-[#FF9900] hover:text-black text-white'
           }`}
         >
           {p}
         </button>
       ))}
-
-      {pageWindow[pageWindow.length - 1] < MAX_PAGES && (
-        <>
-          {pageWindow[pageWindow.length - 1] < MAX_PAGES - 1 && (
-            <span className="px-1 text-gray-500 font-bold">…</span>
-          )}
-          <button
-            type="button"
-            onClick={() => handlePageClick(MAX_PAGES)}
-            className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
-          >
-            {MAX_PAGES}
-          </button>
-        </>
-      )}
-
       <button
         type="button"
-        onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
+        onClick={() => goPage(urlQuery, page + 1)}
         disabled={page >= MAX_PAGES}
-        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm md:text-base"
+        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm"
       >
-        Next →
+        Next
       </button>
     </nav>
   );
@@ -512,180 +250,84 @@ export default function HomeClient({
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
       <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-800">
         <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto">
-          <Link href="/" onClick={scrollToPageTop} className="flex items-center gap-0.5 shrink-0">
-            <span className="text-3xl md:text-4xl font-black text-[#FF9900]">H</span>
-            <span className="text-3xl md:text-4xl font-black text-white">UB</span>
-            <span className="text-3xl md:text-4xl font-black text-[#FF9900]">T</span>
-            <span className="text-3xl md:text-4xl font-black text-white">UBE</span>
+          <Link href="/" onClick={scrollTopNow} className="flex items-center gap-0.5 shrink-0 text-3xl font-black">
+            <span className="text-[#FF9900]">H</span><span className="text-white">UB</span>
+            <span className="text-[#FF9900]">T</span><span className="text-white">UBE</span>
           </Link>
 
           <div ref={searchWrapRef} className="relative flex-1 max-w-xl mx-2">
-            <form onSubmit={handleSearch} className="relative flex items-center">
+            <form onSubmit={(e) => { e.preventDefault(); goPage(searchQuery, 1); }} className="relative flex items-center">
               <input
                 value={searchQuery}
-                onFocus={() => {
-                  if (searchQuery.trim().length > 0) setShowHints(true);
-                }}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSearchQuery(val);
-                  setShowHints(val.trim().length > 0);
-                }}
-                onKeyDown={handleSearchKeyDown}
-                placeholder="Search desi videos, desi mms, bhabhi, pornstars..."
-                autoComplete="off"
-                className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full pl-5 pr-20 py-2.5 text-base focus:outline-none text-white placeholder-gray-400"
+                onFocus={() => searchQuery.trim() && setShowHints(true)}
+                onChange={(e) => { setSearchQuery(e.target.value); setShowHints(Boolean(e.target.value.trim())); }}
+                placeholder="Search desi videos, pornstars, bhabhi..."
+                className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full pl-5 pr-12 py-2.5 text-base text-white outline-none"
               />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setHints([]);
-                    setShowHints(false);
-                  }}
-                  aria-label="Clear search"
-                  className="absolute right-12 text-gray-400 hover:text-white px-2 text-lg"
-                >
-                  ✕
-                </button>
-              )}
-              <button
-                type="submit"
-                aria-label="Search"
-                className="absolute right-1.5 bg-[#FF9900] text-black font-bold rounded-full w-9 h-9 flex items-center justify-center hover:bg-[#ffaa33]"
-              >
-                🔍
+              <button type="submit" className="absolute right-1.5 bg-[#FF9900] text-black font-bold rounded-full w-9 h-9 flex items-center justify-center">
+                Go
               </button>
             </form>
 
-            {showHints && searchQuery.trim().length > 0 && hints.length > 0 && (
-              <div className="absolute left-0 right-0 mt-2 bg-[#161616] border border-gray-700 rounded-2xl shadow-2xl z-[10001] max-h-[65vh] overflow-y-auto">
-                <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-800 flex justify-between items-center sticky top-0 bg-[#161616]">
-                  <span>Suggestions ({hints.length})</span>
+            {showHints && hints.length > 0 && (
+              <div className="absolute left-0 right-0 mt-2 bg-[#161616] border border-gray-700 rounded-2xl shadow-2xl z-[10001] max-h-72 overflow-y-auto">
+                {hints.map((h, i) => (
                   <button
+                    key={`${h.label}-${i}`}
                     type="button"
-                    onClick={() => setShowHints(false)}
-                    className="text-gray-400 hover:text-white"
+                    onMouseDown={(e) => { e.preventDefault(); setSearchQuery(h.label); goPage(h.label, 1); }}
+                    className="w-full px-4 py-2.5 text-left flex items-center justify-between border-b border-gray-800/60 hover:bg-[#222] text-gray-200"
                   >
-                    Close
+                    <span className="truncate text-sm">{h.label}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${BADGE[h.type]}`}>{h.type.toUpperCase()}</span>
                   </button>
-                </div>
-                {hints.map((hint, idx) => {
-                  const badge = HINT_BADGE[hint.type];
-                  return (
-                    <button
-                      key={`${hint.type}-${hint.label}-${idx}`}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleHintSelect(hint.label);
-                      }}
-                      className={`w-full px-4 py-2.5 text-left flex items-center justify-between gap-3 border-b border-gray-800/60 transition ${
-                        idx === activeHintIdx
-                          ? 'bg-[#FF9900]/20 text-white'
-                          : 'hover:bg-[#222] text-gray-200'
-                      }`}
-                    >
-                      <span className="truncate text-sm md:text-base">{hint.label}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${badge.cls}`}>
-                        {badge.text}
-                      </span>
-                    </button>
-                  );
-                })}
+                ))}
               </div>
             )}
           </div>
 
-          <button
-            onClick={() => setShowMenu(!showMenu)}
-            aria-label="Menu"
-            className="text-4xl text-[#FF9900] px-2 shrink-0"
-          >
-            ☰
-          </button>
+          <button onClick={() => setShowMenu(!showMenu)} className="text-4xl text-[#FF9900] px-2">☰</button>
         </div>
       </header>
 
       {showMenu && (
-        <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
-          <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
-            <button
-              onClick={() => {
-                setShowMenu(false);
-                setShowVideoSub(false);
-              }}
-              className="text-4xl leading-none text-gray-400 hover:text-white"
-            >
-              ✕
-            </button>
+        <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-14 overflow-y-auto border-r border-gray-800">
+          <div className="flex justify-end px-6 py-3 border-b border-gray-700">
+            <button onClick={() => setShowMenu(false)} className="text-3xl text-gray-400">✕</button>
           </div>
-          <button
-            onClick={() => setShowVideoSub(!showVideoSub)}
-            className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left"
-          >
-            ▶ VIDEOS
-          </button>
-
-          {showVideoSub && (
-            <div className="mt-2 px-6 space-y-3">
-              <button onClick={() => handleSidebarClick("1080p")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📽️</span><span className="text-white">1080 HD PORN 1080P</span></button>
-              <button onClick={() => handleSidebarClick("60fps")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎬</span><span className="text-white">60FPS PORN</span></button>
-              <button onClick={() => handleSidebarClick("4k")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">4️⃣K</span><span className="text-white">4K PORN</span></button>
-              <button onClick={() => handleSidebarClick("hd sex")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🔥</span><span className="text-white">HD SEX</span></button>
-              <button onClick={() => handleSidebarClick("top rated")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">⭐</span><span className="text-white">TOP RATED</span></button>
-              <button onClick={() => handleSidebarClick("amateur")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📹</span><span className="text-white">AMATEUR</span></button>
-              <button onClick={() => handleSidebarClick("solo")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">👩</span><span className="text-white">SOLO GIRLS</span></button>
-              <button onClick={() => handleSidebarClick("live")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📡</span><span className="text-white">ON-AIR</span></button>
-              <button onClick={() => handleSidebarClick("vr")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🕶️</span><span className="text-white">VR PORN</span></button>
-              <button onClick={() => handleSidebarClick("playlist")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📋</span><span className="text-white">PLAYLISTS</span></button>
-              <button onClick={() => handleSidebarClick("free porn")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎥</span><span className="text-white">FREE PORN</span></button>
-            </div>
-          )}
-          <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
-          <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
-          <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
-          <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
-          <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
-          <Link href="/pornstars" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
+          {['desi', 'viral desi', '4k', '1080p', 'best videos', 'amateur'].map((item) => (
+            <button key={item} onClick={() => goPage(item, 1)} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium border-b border-gray-700 text-left uppercase">
+              {item}
+            </button>
+          ))}
+          <Link href="/categories" onClick={() => setShowMenu(false)} className="block px-6 py-4 text-yellow-400 text-lg font-medium border-b border-gray-700">CATEGORIES</Link>
+          <Link href="/pornstars" onClick={() => setShowMenu(false)} className="block px-6 py-4 text-yellow-400 text-lg font-medium border-b border-gray-700">PORNSTARS</Link>
         </div>
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <h1 className="text-2xl md:text-3xl font-black text-[#FF9900]">
-            {urlQuery ? `${urlQuery} Videos` : 'Trending Desi Videos, Viral MMS & HD Porn'}
-            {` — Page ${page} of ${MAX_PAGES}`}
+          <h1 className="text-2xl md:text-3xl font-black text-[#FF9900] capitalize">
+            {urlQuery ? `${urlQuery} Videos` : 'Trending Desi Videos, Viral MMS & HD Porn'} — Page {page}
           </h1>
           {urlQuery && (
-            <button
-              onClick={() => navigateToSearch('', 1)}
-              className="text-sm bg-[#222] hover:bg-[#FF9900] hover:text-black px-4 py-2 rounded-full font-semibold transition"
-            >
+            <button onClick={() => goPage('', 1)} className="text-sm bg-[#222] hover:bg-[#FF9900] hover:text-black px-4 py-2 rounded-full font-semibold">
               Reset Filter
             </button>
           )}
         </div>
 
         <JuicyBanner />
-
-        {renderPaginationBar()}
+        {renderPagination()}
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-            {[...Array(15)].map((_, i) => (
-              <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />
-            ))}
-          </div>
-        ) : videos.length === 0 ? (
-          <div className="text-center py-20 text-yellow-500 text-xl">
-            No results found for &ldquo;{urlQuery}&rdquo;. Try another keyword or page.
+            {[...Array(15)].map((_, i) => <div key={i} className="bg-[#1a1a1a] rounded-2xl animate-pulse aspect-video" />)}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {videos.map((v) => (
-              <Link key={v.id} href={`/watch/${v.id}`} className="block">
+              <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                 <VideoCard video={v} />
               </Link>
             ))}
@@ -695,37 +337,23 @@ export default function HomeClient({
         <div className="mt-10 space-y-4">
           {videos.length > 0 && (
             <div className="flex justify-center">
-              <button
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="px-10 py-3.5 bg-[#FF9900] text-black font-black rounded-full hover:bg-[#ffaa33] transition disabled:opacity-60 text-base shadow-lg"
-              >
-                {loadingMore ? 'Loading More Videos...' : 'LOAD MORE VIDEOS'}
+              <button onClick={handleLoadMore} disabled={loadingMore} className="px-10 py-3.5 bg-[#FF9900] text-black font-black rounded-full">
+                {loadingMore ? 'Loading More...' : 'LOAD MORE VIDEOS'}
               </button>
             </div>
           )}
-
-          {renderPaginationBar()}
+          {renderPagination()}
         </div>
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {!loading && forYouVideos.length > 0 && (
+        {/* Logically Matched Similar Videos */}
+        {!loading && similarVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-[#FF9900]">
-                Recommended For You
-              </h2>
-              <button
-                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
-                className="text-sm font-bold text-[#FF9900] hover:underline"
-              >
-                Explore More →
-              </button>
-            </div>
+            <h2 className="text-xl md:text-2xl font-black text-[#FF9900] mb-6 capitalize">{simHeading}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {forYouVideos.map((v) => (
-                <Link key={`foryou-${v.id}`} href={`/watch/${v.id}`} className="block">
+              {similarVideos.map((v) => (
+                <Link key={`sim-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}
@@ -733,22 +361,13 @@ export default function HomeClient({
           </section>
         )}
 
-        {!loading && similarVideos.length > 0 && (
+        {/* Logically Paired Peer Pornstars / Sub-Categories */}
+        {!loading && forYouVideos.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-[#FF9900]">
-                Similar Videos You May Also Like
-              </h2>
-              <button
-                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
-                className="text-sm font-bold text-[#FF9900] hover:underline"
-              >
-                Next Page →
-              </button>
-            </div>
+            <h2 className="text-xl md:text-2xl font-black text-[#FF9900] mb-6 capitalize">{recHeading}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {similarVideos.map((v) => (
-                <Link key={`sim-${v.id}`} href={`/watch/${v.id}`} className="block">
+              {forYouVideos.map((v) => (
+                <Link key={`rec-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}
@@ -758,12 +377,10 @@ export default function HomeClient({
 
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
-            <h2 className="text-2xl font-black text-[#FF9900] mb-6">
-              Recently Watched
-            </h2>
+            <h2 className="text-2xl font-black text-[#FF9900] mb-6">Recently Watched</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {recentHistory.map((v) => (
-                <Link key={`hist-${v.id}`} href={`/watch/${v.id}`} className="block">
+                <Link key={`hist-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}
@@ -772,19 +389,10 @@ export default function HomeClient({
         )}
 
         <footer className="mt-16 pt-8 border-t border-gray-800">
-          <h2 className="text-lg font-black text-[#FF9900] mb-3">
-            Popular Desi Videos, Viral MMS &amp; HD Categories
-          </h2>
-          <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-            HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
-          </p>
+          <h2 className="text-lg font-black text-[#FF9900] mb-3">Popular Desi Videos &amp; Viral MMS</h2>
           <div className="flex flex-wrap gap-2">
-            {SEO_DESI_HUB_LINKS.map((term) => (
-              <Link
-                key={term}
-                href={`/?q=${encodeURIComponent(term.toLowerCase())}`}
-                className="text-xs bg-[#161616] hover:bg-[#FF9900] hover:text-black text-gray-300 px-3 py-1.5 rounded-full border border-gray-800 transition"
-              >
+            {SEO_LINKS.map((term) => (
+              <Link key={term} href={`/?q=${encodeURIComponent(term.toLowerCase())}`} onClick={scrollTopNow} className="text-xs bg-[#161616] hover:bg-[#FF9900] hover:text-black text-gray-300 px-3 py-1.5 rounded-full border border-gray-800">
                 {term}
               </Link>
             ))}
