@@ -16,6 +16,7 @@ export type WatchVideo = {
   id: string;
   title: string;
   default_thumb: { src: string };
+  thumbs?: Array<{ src: string; width?: number; height?: number }>;
   length_min: number;
   length_sec: number;
   embed: string;
@@ -175,34 +176,17 @@ export default function WatchClient({
     }
   };
 
-  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 40): Promise<WatchVideo[]> => {
+  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 30): Promise<WatchVideo[]> => {
     try {
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=top-rated`,
-        { cache: 'no-store' }
+        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=top-rated`
       );
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) return data as WatchVideo[];
-      }
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? (data as WatchVideo[]) : [];
     } catch {
-      // Fallback below
+      return [];
     }
-
-    try {
-      const directRes = await fetch(
-        `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=top-rated&format=json`,
-        { cache: 'no-store' }
-      );
-      if (directRes.ok) {
-        const directData = await directRes.json();
-        if (Array.isArray(directData.videos)) return directData.videos as WatchVideo[];
-      }
-    } catch {
-      // Return empty array if both fail
-    }
-
-    return [];
   }, []);
 
   const loadSimilarVideos = useCallback(
@@ -225,10 +209,10 @@ export default function WatchClient({
       }
 
       const query = extractUniqueRelatedQuery(targetVideo, id);
-      const idOffset = (hashString(id) % 8) + 1;
+      const idOffset = (hashString(id) % 6) + 1;
       const effectiveApiPage = pageNum === 1 ? idOffset : idOffset + pageNum - 1;
 
-      const fetched = await fetchBatch(query, effectiveApiPage, 40);
+      const fetched = await fetchBatch(query, effectiveApiPage, 30);
       const previouslyShown = getGlobalShownIds();
 
       const freshMatches = fetched.filter((v) => v.id && v.id !== id && !previouslyShown.has(v.id));
@@ -327,21 +311,6 @@ export default function WatchClient({
           }
         }
       } catch {
-        // Fallback to direct Eporner video lookup below
-      }
-
-      try {
-        const directRes = await fetch(
-          `https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`
-        );
-        if (directRes.ok) {
-          const directData: WatchVideo = await directRes.json();
-          if (directData && directData.id) {
-            handleLoadedVideo(directData);
-            return;
-          }
-        }
-      } catch {
         // Handle null below
       }
 
@@ -381,7 +350,6 @@ export default function WatchClient({
       try {
         const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
           signal: controller.signal,
-          cache: 'no-store',
         });
         if (!res.ok) return;
         const data: { hints?: SearchHint[] } = await res.json();
@@ -474,7 +442,7 @@ export default function WatchClient({
                   setShowHints(val.trim().length > 0);
                 }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search desi, bhabhi, pornstars, categories..."
+                placeholder="Search desi videos, desi mms, bhabhi, pornstars..."
                 autoComplete="off"
                 className="w-full bg-[#222] border-2 border-[#FF9900] text-white pl-5 pr-16 py-2.5 rounded-full outline-none placeholder-gray-400"
               />
@@ -572,6 +540,7 @@ export default function WatchClient({
             </div>
           )}
           <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
+          <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
           <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
           <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
@@ -586,7 +555,7 @@ export default function WatchClient({
           className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
         >
           <iframe
-            src={`https://www.eporner.com/embed/${id}/`}
+            src={`https://www.pornhub.com/embed/${id}`}
             className="w-full h-full border-0"
             allow="autoplay; fullscreen"
             allowFullScreen
@@ -656,7 +625,8 @@ export default function WatchClient({
             )}
           </div>
         )}
-<JuicyBanner adzone={1133788} width={308} height={286} />
+
+        <JuicyBanner adzone={1133788} width={308} height={286} />
 
         {/* Similar Videos Matched Specifically to This Video */}
         <div id="similar-videos-section" className="mt-10">
@@ -696,7 +666,7 @@ export default function WatchClient({
             </div>
           </div>
         )}
-<JuicyBanner adzone={1133788} width={308} height={286} />
+
         {/* More Videos + Prev/Next Controls */}
         <div className="mt-10 flex flex-col items-center gap-6">
           <button
@@ -726,7 +696,7 @@ export default function WatchClient({
             </button>
           </div>
         </div>
-<JuicyBanner adzone={1133788} width={308} height={286} />
+
         {/* Personalized Recommendations Based on User Preferences */}
         {forYouVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">

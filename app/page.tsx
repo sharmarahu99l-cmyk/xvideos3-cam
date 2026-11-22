@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import HomeClient from './HomeClient';
-import type { StoredVideo } from './lib/userPrefs';
+import { searchPornhubVideos } from './lib/pornhub';
 
 export async function generateMetadata({
   searchParams,
@@ -21,18 +21,6 @@ export async function generateMetadata({
     return {
       title: `${q} Videos${page > 1 ? ` - Page ${page}` : ''} | Free HD Desi Videos & Porn`,
       description: `Watch unlimited free ${q} HD videos${page > 1 ? ` (Page ${page})` : ''}, viral Desi MMS, Indian bhabhi, and new Desi clips streaming fast on HubTube (XVideos3.cam).`,
-      keywords: [
-        q,
-        `${q} videos`,
-        `${q} hd`,
-        'desi videos',
-        'desi porn',
-        'desi mms',
-        'viral desi videos',
-        'new desi videos',
-        'indian porn',
-        'xvideos3',
-      ],
       alternates: { canonical: canonicalPath },
     };
   }
@@ -48,28 +36,6 @@ export async function generateMetadata({
   };
 }
 
-async function getInitialVideos(query: string, page: number): Promise<StoredVideo[]> {
-  const searchTerm = query.trim() || 'desi';
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=30&page=${page}&order=most_viewed&format=json`,
-      {
-        signal: controller.signal,
-        next: { revalidate: 900 },
-        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
-      }
-    );
-    clearTimeout(timer);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data.videos) ? (data.videos as StoredVideo[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 export default async function HomePage({
   searchParams,
 }: {
@@ -78,7 +44,7 @@ export default async function HomePage({
   const sp = await searchParams;
   const q = sp.q?.trim() || '';
   const page = Math.max(1, Number(sp.page) || 1);
-  const initialVideos = await getInitialVideos(q, page);
+  const initialVideos = await searchPornhubVideos(q || 'desi', page, 'most_viewed');
 
   const siteSchema = {
     '@context': 'https://schema.org',
