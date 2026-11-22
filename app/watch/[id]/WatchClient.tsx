@@ -15,8 +15,8 @@ export type WatchVideo = {
   title: string;
   default_thumb: { src: string };
   thumbs?: Array<{ src?: string; width?: number; height?: number }>;
-  length_min: number;
-  length_sec: number;
+  length_min: number | string;
+  length_sec: number | string;
   embed?: string;
   views?: string | number;
   keywords?: string;
@@ -44,6 +44,30 @@ const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   pornstar: { text: 'STAR', cls: 'bg-pink-500/20 text-pink-300' },
   video: { text: 'VIDEO', cls: 'bg-neutral-700 text-neutral-300' },
 };
+
+function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
+  const totalSecs = Number(lengthSec);
+  if (!Number.isNaN(totalSecs) && totalSecs > 0) {
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = Math.floor(totalSecs % 60);
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  }
+
+  if (typeof lengthMin === 'string' && lengthMin.includes(':')) {
+    return lengthMin.trim();
+  }
+
+  const minsNum = Number(lengthMin);
+  if (!Number.isNaN(minsNum) && minsNum > 0) {
+    return `${Math.floor(minsNum)}:00`;
+  }
+
+  return '0:00';
+}
 
 function scrollTopNow() {
   if (typeof window === 'undefined') return;
@@ -81,9 +105,7 @@ export default function WatchClient({
   const relatedRef = useRef<WatchVideo[]>([]);
   relatedRef.current = related;
 
-  const playerContainerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
@@ -99,24 +121,6 @@ export default function WatchClient({
       }
     };
   }, [id]);
-
-  useEffect(() => {
-    const onFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
-
-  const toggleFullscreen = () => {
-    const el = playerContainerRef.current;
-    if (!el) return;
-    if (!document.fullscreenElement) {
-      el.requestFullscreen?.().catch(() => {});
-    } else {
-      document.exitFullscreen?.().catch(() => {});
-    }
-  };
 
   const fetchBatch = useCallback(
     async (query: string, pageNum: number, perPage = 30, order = 'most_viewed'): Promise<WatchVideo[]> => {
@@ -176,7 +180,6 @@ export default function WatchClient({
           : peerList.slice(0, 2).map((peerTerm) => fetchBatch(peerTerm, pageNum, 12, 'top-rated'))),
       ]);
 
-      // For pornstar queries, keep Similar strictly focused on that pornstar first
       const strictSim =
         ctx.type === 'pornstar'
           ? [
@@ -217,7 +220,6 @@ export default function WatchClient({
         setMoreVideos([]);
         setExtraPages(0);
 
-        // Interleave videos from multiple other peer pornstars / sub-niches, excluding current pornstar
         const interleavedPeers: WatchVideo[] = [];
         const maxLen = Math.max(0, ...peerBatches.map((b) => b.length));
         for (let i = 0; i < maxLen; i++) {
@@ -523,45 +525,19 @@ export default function WatchClient({
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Clean Video Player: Cropped Top Edge so No Text Shows on Player */}
         <div
           key={`player-wrap-${id}`}
-          ref={playerContainerRef}
           className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
         >
           <iframe
             key={`player-frame-${id}`}
             ref={iframeRef}
             src={`https://www.eporner.com/embed/${encodeURIComponent(id)}/`}
-            className="w-full h-full border-0"
+            className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
             allow="autoplay; fullscreen"
             allowFullScreen
           />
-
-          <div className="absolute top-0 left-0 right-0 h-14 bg-gradient-to-b from-black via-black/95 to-transparent flex items-center justify-between px-4 z-20 pointer-events-auto">
-            <div className="flex items-center gap-0.5 text-lg font-black select-none">
-              <span className="text-[#FF9900]">H</span>
-              <span className="text-white">UB</span>
-              <span className="text-[#FF9900]">T</span>
-              <span className="text-white">UBE</span>
-              <span className="ml-2 text-[10px] font-bold bg-[#FF9900] text-black px-2 py-0.5 rounded-full">
-                HD
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="text-xs font-bold bg-[#222]/90 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full transition"
-            >
-              {isFullscreen ? 'Exit Fullscreen' : '⛶ Fullscreen'}
-            </button>
-          </div>
-
-          <div className="absolute bottom-11 right-3 bg-black/95 px-3 py-1 rounded-lg flex items-center gap-0.5 text-base font-black z-20 select-none">
-            <span className="text-[#FF9900]">H</span>
-            <span className="text-white">UB</span>
-            <span className="text-[#FF9900]">T</span>
-            <span className="text-white">UBE</span>
-          </div>
         </div>
 
         <JuicyBanner />
@@ -573,9 +549,7 @@ export default function WatchClient({
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-400 mb-4">
             {video?.views !== undefined && <span>👁️ {video.views} views</span>}
             {video && (
-              <span>
-                ⏱️ {video.length_min || 0}:{String(video.length_sec || 0).padStart(2, '0')}
-              </span>
+              <span>⏱️ {formatDuration(video.length_sec, video.length_min)}</span>
             )}
             <span className="text-[#FF9900] font-bold">HD • FREE STREAM</span>
           </div>
@@ -609,7 +583,6 @@ export default function WatchClient({
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Section 1: Exact Match (e.g., Only Angela White if watching Angela White) */}
         <div id="similar-videos-section" className="mt-10">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-[#FF9900] text-xl md:text-2xl font-bold capitalize">
@@ -676,7 +649,6 @@ export default function WatchClient({
           </div>
         </div>
 
-        {/* Section 2: Logically Related Other Pornstars / Sub-Categories */}
         {forYouVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
             <h2 className="text-[#FF9900] text-xl md:text-2xl font-bold mb-6 capitalize">
@@ -692,7 +664,6 @@ export default function WatchClient({
           </section>
         )}
 
-        {/* Desi SEO Tags Hub at the Bottom of the Page */}
         <footer className="mt-16 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories

@@ -13,12 +13,36 @@ export interface VideoCardData {
   title: string;
   default_thumb?: { src?: string };
   thumbs?: ThumbItem[];
-  length_min?: number;
-  length_sec?: number;
+  length_min?: number | string;
+  length_sec?: number | string;
   views?: string | number;
   embed?: string;
   keywords?: string;
   added?: string;
+}
+
+function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
+  const totalSecs = Number(lengthSec);
+  if (!Number.isNaN(totalSecs) && totalSecs > 0) {
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = Math.floor(totalSecs % 60);
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  }
+
+  if (typeof lengthMin === 'string' && lengthMin.includes(':')) {
+    return lengthMin.trim();
+  }
+
+  const minsNum = Number(lengthMin);
+  if (!Number.isNaN(minsNum) && minsNum > 0) {
+    return `${Math.floor(minsNum)}:00`;
+  }
+
+  return '0:00';
 }
 
 function extractPreviewFrames(video: VideoCardData): {
@@ -78,7 +102,6 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
     setFrameIdx(0);
   }, [primary, fallback]);
 
-  // Trigger smooth multi-frame preview when card is softly scrolled into center of mobile viewport
   useEffect(() => {
     const el = cardRef.current;
     if (!el || frames.length <= 1 || typeof IntersectionObserver === 'undefined') return;
@@ -104,7 +127,6 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
     return () => observer.disconnect();
   }, [frames.length, primary]);
 
-  // Cycle through preview frames while active
   useEffect(() => {
     if (!isPreviewing || frames.length <= 1) return;
 
@@ -121,8 +143,7 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
 
   if (hidden || !imgSrc) return null;
 
-  const mins = video.length_min || 0;
-  const secs = String(video.length_sec || 0).padStart(2, '0');
+  const durationText = formatDuration(video.length_sec, video.length_min);
   const progressPct = frames.length > 1 ? Math.round(((frameIdx + 1) / frames.length) * 100) : 0;
 
   return (
@@ -161,7 +182,7 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
         </span>
 
         <span className="absolute bottom-2 right-2 bg-black/90 text-white text-xs font-bold px-2 py-0.5 rounded-md">
-          {mins}:{secs}
+          {durationText}
         </span>
 
         {isPreviewing && frames.length > 1 && (
