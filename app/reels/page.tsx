@@ -2,15 +2,30 @@ import type { Metadata } from 'next';
 import ReelsClient, { type ReelVideo } from './ReelsClient';
 
 export const metadata: Metadata = {
-  title: 'HubTube Reels — Free HD Desi & Adult Short Videos | XVideos3',
+  title: 'HubTube Reels — Trending & Most Watched HD Adult Reels | XVideos3',
   description:
-    'Swipe through endless full-screen HD Desi videos, viral MMS, and adult reels on HubTube (XVideos3.cam).',
+    'Swipe through endless trending and most-watched HD adult reels, viral Desi MMS, and 4K videos on HubTube (XVideos3.cam).',
   alternates: { canonical: '/reels' },
 };
 
 const FETCH_HEADERS = {
   'User-Agent': 'Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36',
 };
+
+function parseViews(views?: string | number): number {
+  if (typeof views === 'number') return views;
+  if (typeof views === 'string') {
+    const num = Number(views.replace(/[^0-9]/g, ''));
+    return Number.isNaN(num) ? 0 : num;
+  }
+  return 0;
+}
+
+function isValidReel(v: ReelVideo): boolean {
+  const src = v?.default_thumb?.src?.trim() || '';
+  const secs = Number(v.length_sec) || (Number(v.length_min) || 0) * 60;
+  return Boolean(v?.id && v?.title && src.startsWith('http') && secs > 5);
+}
 
 async function getVideoById(id: string): Promise<ReelVideo | null> {
   try {
@@ -20,41 +35,54 @@ async function getVideoById(id: string): Promise<ReelVideo | null> {
     );
     if (!res.ok) return null;
     const v: ReelVideo = await res.json();
-    if (v?.id && v?.title && v?.default_thumb?.src?.startsWith('http')) {
-      return v;
-    }
-  } catch {}
-  return null;
+    return isValidReel(v) ? v : null;
+  } catch {
+    return null;
+  }
 }
 
-async function getInitialReels(startId?: string): Promise<ReelVideo[]> {
+async function fetchEpornerOrder(order: 'top-weekly' | 'most-popular'): Promise<ReelVideo[]> {
   try {
-    const [startVideo, listRes] = await Promise.all([
-      startId ? getVideoById(startId) : Promise.resolve(null),
-      fetch(
-        'https://www.eporner.com/api/v2/video/search/?query=desi&per_page=20&page=1&order=most_viewed&thumbsize=big&format=json',
-        { next: { revalidate: 1800 }, headers: FETCH_HEADERS }
-      ),
-    ]);
-
-    let list: ReelVideo[] = [];
-    if (listRes.ok) {
-      const data = await listRes.json();
-      const raw: ReelVideo[] = Array.isArray(data.videos) ? data.videos : [];
-      list = raw.filter((v) => {
-        const src = v?.default_thumb?.src?.trim() || '';
-        const secs = Number(v.length_sec) || (Number(v.length_min) || 0) * 60;
-        return Boolean(v?.id && v?.title && src.startsWith('http') && secs > 5);
-      });
-    }
-
-    if (startVideo) {
-      return [startVideo, ...list.filter((v) => v.id !== startVideo.id)];
-    }
-    return list;
+    const res = await fetch(
+      `https://www.eporner.com/api/v2/video/search/?query=all&per_page=15&page=1&order=${order}&lq=0&thumbsize=big&format=json`,
+      { next: { revalidate: 1800 }, headers: FETCH_HEADERS }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw: ReelVideo[] = Array.isArray(data.videos) ? data.videos : [];
+    return raw.filter(isValidReel);
   } catch {
     return [];
   }
+}
+
+async function getInitialReels(startId?: string): Promise<ReelVideo[]> {
+  const [startVideo, trendingWeekly, mostPopular] = await Promise.all([
+    startId ? getVideoById(startId) : Promise.resolve(null),
+    fetchEpornerOrder('top-weekly'),
+    fetchEpornerOrder('most-popular'),
+  ]);
+
+  // Interleave trending this week + all-time most watched, deduplicate, and prioritize high views
+  const combined: ReelVideo[] = [];
+  const seen = new Set<string>();
+  const maxLen = Math.max(trendingWeekly.length, mostPopular.length);
+
+  for (let i = 0; i < maxLen; i++) {
+    for (const item of [trendingWeekly[i], mostPopular[i]]) {
+      if (item && !seen.has(item.id)) {
+        seen.add(item.id);
+        combined.push(item);
+      }
+    }
+  }
+
+  combined.sort((a, b) => parseViews(b.views) - parseViews(a.views));
+
+  if (startVideo) {
+    return [startVideo, ...combined.filter((v) => v.id !== startVideo.id)];
+  }
+  return combined;
 }
 
 export default async function ReelsPage({

@@ -13,8 +13,11 @@ export interface ReelVideo {
   keywords?: string;
 }
 
+const FOR_YOU_KEY = '__for_you__';
+
 const REEL_CATEGORIES = [
-  { label: 'For You', query: 'desi' },
+  { label: '🔥 For You', query: FOR_YOU_KEY },
+  { label: 'Desi', query: 'desi' },
   { label: 'Viral MMS', query: 'viral desi' },
   { label: 'Bhabhi', query: 'desi bhabhi' },
   { label: 'Amateur', query: 'amateur' },
@@ -25,6 +28,15 @@ const REEL_CATEGORIES = [
 ];
 
 const LIKES_KEY = 'hubtube_reel_likes_v1';
+
+function parseViews(views?: string | number): number {
+  if (typeof views === 'number') return views;
+  if (typeof views === 'string') {
+    const num = Number(views.replace(/[^0-9]/g, ''));
+    return Number.isNaN(num) ? 0 : num;
+  }
+  return 0;
+}
 
 function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
   const totalSecs = Number(lengthSec);
@@ -52,10 +64,15 @@ function validThumb(v: ReelVideo): boolean {
   return Boolean(v?.id && v?.title && src.startsWith('http'));
 }
 
-async function fetchReelBatch(query: string, pageNum: number): Promise<ReelVideo[]> {
+async function fetchSingleOrder(
+  query: string,
+  pageNum: number,
+  perPage: number,
+  order: 'top-weekly' | 'most-popular'
+): Promise<ReelVideo[]> {
   try {
     const res = await fetch(
-      `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=20&order=most_viewed`
+      `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${order}`
     );
     if (res.ok) {
       const data = await res.json();
@@ -67,7 +84,7 @@ async function fetchReelBatch(query: string, pageNum: number): Promise<ReelVideo
 
   try {
     const direct = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=20&page=${pageNum}&order=most_viewed&thumbsize=big&format=json`
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${order}&lq=0&thumbsize=big&format=json`
     );
     if (direct.ok) {
       const data = await direct.json();
@@ -78,9 +95,37 @@ async function fetchReelBatch(query: string, pageNum: number): Promise<ReelVideo
   return [];
 }
 
+async function fetchReelBatch(categoryQuery: string, pageNum: number): Promise<ReelVideo[]> {
+  // For You always blends Trending This Week (top-weekly) + All-Time Most Watched (most-popular)
+  if (categoryQuery === FOR_YOU_KEY) {
+    const [trendingWeekly, mostPopular] = await Promise.all([
+      fetchSingleOrder('all', pageNum, 15, 'top-weekly'),
+      fetchSingleOrder('all', pageNum, 15, 'most-popular'),
+    ]);
+
+    const merged: ReelVideo[] = [];
+    const seen = new Set<string>();
+    const maxLen = Math.max(trendingWeekly.length, mostPopular.length);
+
+    for (let i = 0; i < maxLen; i++) {
+      for (const item of [trendingWeekly[i], mostPopular[i]]) {
+        if (item && !seen.has(item.id)) {
+          seen.add(item.id);
+          merged.push(item);
+        }
+      }
+    }
+
+    return merged.sort((a, b) => parseViews(b.views) - parseViews(a.views));
+  }
+
+  const list = await fetchSingleOrder(categoryQuery, pageNum, 20, 'most-popular');
+  return list.sort((a, b) => parseViews(b.views) - parseViews(a.views));
+}
+
 export default function ReelsClient({ initialVideos }: { initialVideos: ReelVideo[] }) {
   const [videos, setVideos] = useState<ReelVideo[]>(initialVideos.filter(validThumb));
-  const [activeCategory, setActiveCategory] = useState<string>('desi');
+  const [activeCategory, setActiveCategory] = useState<string>(FOR_YOU_KEY);
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(initialVideos.length === 0);
@@ -284,7 +329,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       {loading ? (
         <div className="h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-black">
           <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-gray-400">Loading HubReels...</p>
+          <p className="text-sm font-bold text-gray-400">Loading Trending HubReels...</p>
         </div>
       ) : (
         <div
@@ -307,7 +352,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               >
                 {/* Full-Screen Reel Frame */}
                 <div className="relative h-[100dvh] w-full sm:max-w-[460px] bg-black overflow-hidden sm:border-x sm:border-white/10">
-                  {/* Thumbnail shown immediately while scrolling */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
@@ -315,7 +359,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Directly Interactive Full-Bleed Player (No Blocking Overlay) */}
                   {isActive && (
                     <div className="absolute inset-0 overflow-hidden flex items-center justify-center bg-black z-10">
                       <iframe
@@ -328,13 +371,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   )}
 
-                  {/* Top & Bottom Gradient Vignettes (pointer-events-none so video stays clickable) */}
                   <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
                   <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-20" />
 
                   {/* Right-Side Action Rail */}
                   <div className="absolute right-3 bottom-24 z-30 flex flex-col items-center gap-4">
-                    {/* Like */}
                     <button
                       type="button"
                       onClick={() => toggleLike(v.id)}
@@ -357,7 +398,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
-                    {/* Open Full Watch Page */}
                     <Link
                       href={`/watch/${v.id}`}
                       className="flex flex-col items-center gap-1 group"
@@ -370,7 +410,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Full</span>
                     </Link>
 
-                    {/* Share */}
                     <button
                       type="button"
                       onClick={() => handleShare(v)}
@@ -389,7 +428,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Share</span>
                     </button>
 
-                    {/* Prev / Next Reel Controls */}
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
                       <button
                         type="button"
@@ -415,7 +453,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                   <div className="absolute bottom-6 left-4 right-20 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
-                        HUBREELS
+                        {activeCategory === FOR_YOU_KEY ? '🔥 TRENDING' : 'HUBREELS'}
                       </span>
                       <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
                         ⏱ {duration}
@@ -438,7 +476,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           {loadingMore && (
             <div className="h-24 flex items-center justify-center bg-black text-xs font-bold text-[#FF9900]">
-              Loading more reels...
+              Loading more trending reels...
             </div>
           )}
         </div>
