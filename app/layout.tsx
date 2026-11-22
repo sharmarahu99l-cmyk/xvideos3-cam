@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import ScrollToTop from "./components/ScrollToTop";
-import FloatingBackButton from "./components/FloatingBackButton";
+import GlobalUI from "./GlobalUI";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://xvideos3.cam"),
@@ -66,9 +65,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#0a0a0a] text-[#ddd]">
-        <ScrollToTop />
         {children}
-        <FloatingBackButton />
+        <GlobalUI />
       </body>
     </html>
   );

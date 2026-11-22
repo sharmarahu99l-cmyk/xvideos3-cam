@@ -1,20 +1,29 @@
-
 import { NextResponse } from 'next/server';
 
-interface RedtubeRaw {
-  video?: {
-    video_id?: string;
-    title?: string;
-    thumb?: string;
-    default_thumb?: string;
-    duration?: string;
-    views?: string | number;
-  };
+interface RedtubeVideo {
   video_id?: string;
   title?: string;
   thumb?: string;
+  default_thumb?: string;
   duration?: string;
   views?: string | number;
+}
+
+interface RedtubeItem extends RedtubeVideo {
+  video?: RedtubeVideo;
+}
+
+async function fetchWithTimeout(url: string, ms = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function GET(request: Request) {
@@ -27,16 +36,9 @@ export async function GET(request: Request) {
   if (!q) return NextResponse.json([]);
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&order=${encodeURIComponent(order)}&format=json`,
-      {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
-      }
+    const res = await fetchWithTimeout(
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(q)}&per_page=${perPage}&page=${page}&order=${encodeURIComponent(order)}&format=json`
     );
-    clearTimeout(timer);
 
     if (res.ok) {
       const data = await res.json();
@@ -51,15 +53,16 @@ export async function GET(request: Request) {
   }
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=${encodeURIComponent(q)}&page=${page}`
     );
+
     if (res.ok) {
       const data = await res.json();
-      const raw: RedtubeRaw[] = Array.isArray(data.videos) ? data.videos : [];
+      const raw: RedtubeItem[] = Array.isArray(data.videos) ? data.videos : [];
       const mapped = raw
         .map((item) => {
-          const v = item.video || item;
+          const v: RedtubeVideo = item.video ?? item;
           const parts = (v.duration || '0:0').split(':');
           return {
             id: String(v.video_id || ''),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from './VideoCard';
@@ -20,25 +20,8 @@ type SearchHint = {
   type: 'category' | 'pornstar' | 'desi' | 'video';
 };
 
-interface RedtubeRaw {
-  video?: {
-    video_id?: string;
-    title?: string;
-    thumb?: string;
-    default_thumb?: string;
-    duration?: string;
-    views?: string | number;
-  };
-  video_id?: string;
-  title?: string;
-  thumb?: string;
-  duration?: string;
-  views?: string | number;
-}
-
 const PER_PAGE = 60;
 
-// Instant 0ms local hints while live API results stream in
 const INSTANT_DESI = [
   "Desi", "Desi Bhabhi", "Desi Aunty", "Desi MMS", "Desi Viral MMS", "Desi Sex",
   "Desi Chudai", "Desi Hardcore", "Desi Homemade", "Desi Couple", "Desi College Girl",
@@ -47,7 +30,7 @@ const INSTANT_DESI = [
   "Indian Aunty", "Indian MMS", "Indian Wife", "Indian Couple", "Indian Homemade",
   "Bhabhi Devar", "Hindi Audio Sex", "Tamil Desi", "Telugu Desi", "Bengali Bhabhi",
   "Marathi Bhabhi", "Gujarati Aunty", "Mallu Aunty", "Bhojpuri Desi", "Desi Stepmom",
-  "Desi Suhag Raat", "Desi Leaked Scandal", "Desi Hidden Cam", "Desi Big Boobs", "Desi Big Ass"
+  "Desi Suhag Raat", "Desi Leaked Scandal", "Desi Hidden Cam", "Desi Big Boobs", "Desi Big Ass",
 ];
 
 const INSTANT_CATEGORIES = [
@@ -61,7 +44,7 @@ const INSTANT_CATEGORIES = [
   "Hotel", "Fat", "Outdoor", "Squirt", "Fetish", "Redhead", "Housewives",
   "Sleep", "Small Tits", "Swinger", "Bukkake", "Uniform", "Striptease",
   "Bondage", "For Women", "Nurses", "Handjob", "Fisting", "HQ Porn",
-  "Bisexual", "HD Sex", "Footjob", "ASMR", "Doctor"
+  "Bisexual", "HD Sex", "Footjob", "ASMR", "Doctor",
 ];
 
 const INSTANT_PORNSTARS = [
@@ -77,7 +60,7 @@ const INSTANT_PORNSTARS = [
   "Johnny Love", "Alexandra Cat", "Gabbie Carter", "Hazel Moore", "Skylar Vox",
   "Bridgette B", "Damion Dayski", "Jada Stevens", "Julia Ann", "Phoenix Marie",
   "Anissa Kate", "Johnny Sins", "Chanel Preston", "Alura Jenson", "Reagan Foxx",
-  "Eliza Ibarra", "Ariella Ferrera", "Mick Blue"
+  "Eliza Ibarra", "Ariella Ferrera", "Mick Blue",
 ];
 
 function getInstantLocalHints(query: string): SearchHint[] {
@@ -119,56 +102,27 @@ function getInstantLocalHints(query: string): SearchHint[] {
   return out;
 }
 
-const fetchWithFallback = async (
+async function fetchVideos(
   query: string,
   pageNum: number = 1,
   perPage: number = PER_PAGE,
   order: string = 'most_viewed'
-): Promise<Video[]> => {
-  const searchTerm = query.trim() || "desi";
+): Promise<Video[]> {
+  const searchTerm = query.trim() || 'desi';
   try {
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${order}&format=json`,
+      `/api/search?q=${encodeURIComponent(searchTerm)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`,
       { cache: 'no-store' }
     );
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.videos) && data.videos.length > 0) {
-        return data.videos as Video[];
-      }
+      if (Array.isArray(data)) return data as Video[];
     }
   } catch {
-    // Fallback to RedTube below
-  }
-
-  try {
-    const res = await fetch(
-      `https://api.redtube.com/?data=redtube.Videos.searchVideos&output=json&search=${encodeURIComponent(searchTerm)}&page=${pageNum}`
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const rawList: RedtubeRaw[] = Array.isArray(data.videos) ? data.videos : [];
-      return rawList
-        .map((item) => {
-          const v = item.video || item;
-          const parts = (v.duration || '0:0').split(':');
-          return {
-            id: String(v.video_id || ''),
-            title: v.title || 'HD Video',
-            default_thumb: { src: v.thumb || v.default_thumb || '' },
-            length_min: parseInt(parts[0] || '0', 10) || 0,
-            length_sec: parseInt(parts[1] || '0', 10) || 0,
-            embed: `https://embed.redtube.com/?id=${v.video_id}`,
-            views: String(v.views || '0'),
-          };
-        })
-        .filter((v) => Boolean(v.id));
-    }
-  } catch {
-    // Return empty list if both sources fail
+    // Return empty list on network error
   }
   return [];
-};
+}
 
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
@@ -181,8 +135,8 @@ export default function HomeClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const urlQuery = searchParams.get('q') || "";
-  const urlPage = Math.max(1, Number(searchParams.get('page')) || 1);
+  const urlQuery = searchParams?.get('q') ?? '';
+  const urlPage = Math.max(1, Number(searchParams?.get('page')) || 1);
 
   const [videos, setVideos] = useState<Video[]>([]);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
@@ -194,44 +148,49 @@ export default function HomeClient() {
   const [page, setPage] = useState<number>(urlPage);
   const [loadedExtraPages, setLoadedExtraPages] = useState<number>(0);
 
-  // Instant autocomplete state
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
   const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  const loadVideos = useCallback(async (query: string = "", pageNum: number = 1) => {
-    setLoading(true);
-    setLoadedExtraPages(0);
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
-
-    const [fetched, similar] = await Promise.all([
-      fetchWithFallback(query, pageNum, PER_PAGE, 'most_viewed'),
-      fetchWithFallback(query || "desi bhabhi", pageNum + 1, 15, 'top-rated'),
-    ]);
-
-    setVideos(fetched);
-    const mainIds = new Set(fetched.map((v) => v.id));
-    setSimilarVideos(similar.filter((v) => !mainIds.has(v.id)).slice(0, 10));
-    setPage(pageNum);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
-    setSearchQuery(urlQuery);
-    setPage(urlPage);
-    loadVideos(urlQuery, urlPage);
+    let active = true;
 
-    // Update browser tab title dynamically for current search/page
-    if (urlQuery) {
-      document.title = `${urlQuery} Videos (Page ${urlPage}) - XVideos3 / HubTube HD`;
-    } else if (urlPage > 1) {
-      document.title = `Desi & HD Porn Videos - Page ${urlPage} - XVideos3`;
-    }
-  }, [urlQuery, urlPage, loadVideos]);
+    const run = async () => {
+      setSearchQuery(urlQuery);
+      setPage(urlPage);
+      setLoading(true);
+      setLoadedExtraPages(0);
+      window.scrollTo(0, 0);
 
-  // Close hints dropdown when clicking outside
+      if (urlQuery) {
+        document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
+      } else if (urlPage > 1) {
+        document.title = `Desi & HD Porn Videos - Page ${urlPage} | HubTube - XVideos3`;
+      } else {
+        document.title = 'HubTube (XVideos3) - Free Desi, Indian & HD Porn Videos';
+      }
+
+      const [fetched, similar] = await Promise.all([
+        fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
+        fetchVideos(urlQuery || 'desi bhabhi', urlPage + 1, 15, 'top-rated'),
+      ]);
+
+      if (!active) return;
+
+      setVideos(fetched);
+      const mainIds = new Set(fetched.map((v) => v.id));
+      setSimilarVideos(similar.filter((v) => !mainIds.has(v.id)).slice(0, 10));
+      setLoading(false);
+    };
+
+    run();
+    return () => {
+      active = false;
+    };
+  }, [urlQuery, urlPage]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
@@ -242,7 +201,6 @@ export default function HomeClient() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch instant local hints immediately + unlimited live hints from /api/suggest
   useEffect(() => {
     if (!showHints) return;
 
@@ -265,7 +223,7 @@ export default function HomeClient() {
           setHints(data.hints);
         }
       } catch {
-        // Keep instant local hints on abort or network blip
+        // Keep instant local hints on abort
       }
     }, 150);
 
@@ -329,7 +287,7 @@ export default function HomeClient() {
     if (loadingMore) return;
     setLoadingMore(true);
     const nextBatchPage = page + loadedExtraPages + 1;
-    const more = await fetchWithFallback(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
+    const more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
     if (more.length > 0) {
       setVideos((prev) => {
         const existingIds = new Set(prev.map((v) => v.id));
@@ -371,7 +329,7 @@ export default function HomeClient() {
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchQuery("");
+                    setSearchQuery('');
                     setShowHints(true);
                   }}
                   aria-label="Clear search"
@@ -489,7 +447,7 @@ export default function HomeClient() {
           </h1>
           {urlQuery && (
             <button
-              onClick={() => navigateToSearch("", 1)}
+              onClick={() => navigateToSearch('', 1)}
               className="text-sm bg-[#222] hover:bg-[#FF9900] hover:text-black px-4 py-2 rounded-full font-semibold transition"
             >
               Reset Filter
@@ -510,11 +468,7 @@ export default function HomeClient() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {videos.map((v) => (
-              <Link
-                key={v.id}
-                href={`/watch/${v.id}`}
-                className="block"
-              >
+              <Link key={v.id} href={`/watch/${v.id}`} className="block">
                 <VideoCard video={v} />
               </Link>
             ))}
@@ -593,15 +547,6 @@ export default function HomeClient() {
           </section>
         )}
       </div>
-
-      {/* Floating Back Button */}
-      <button
-        onClick={() => window.history.back()}
-        aria-label="Go Back"
-        className="fixed bottom-6 right-6 bg-[#FF9900] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-2xl z-[10000] hover:bg-[#ffaa33] text-3xl"
-      >
-        ←
-      </button>
     </div>
   );
 }
