@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from '../../VideoCard';
 import JuicyBanner from '../../JuicyBanner';
+import HubTubePlayer from './HubTubePlayer';
 import {
   recordWatchedVideo,
   extractSmartTopics,
@@ -93,20 +94,12 @@ export default function WatchClient({
   const router = useRouter();
   const [video, setVideo] = useState<WatchVideo | null>(initialVideo);
   const [related, setRelated] = useState<WatchVideo[]>([]);
-  const [moreVideos, setMoreVideos] = useState<WatchVideo[]>([]);
   const [detectedTopics, setDetectedTopics] = useState<string[]>([]);
   const [activeTopic, setActiveTopic] = useState<string>('ALL');
   const [loadingRelated, setLoadingRelated] = useState<boolean>(true);
-  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const [showVideoSub, setShowVideoSub] = useState<boolean>(false);
   const [relatedPage, setRelatedPage] = useState<number>(1);
-  const [extraPages, setExtraPages] = useState<number>(0);
-
-  const relatedRef = useRef<WatchVideo[]>([]);
-  relatedRef.current = related;
-
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
@@ -114,14 +107,6 @@ export default function WatchClient({
   const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (iframeRef.current) {
-        iframeRef.current.src = 'about:blank';
-      }
-    };
-  }, [id]);
 
   const fetchBatch = useCallback(
     async (query: string, pageNum: number, perPage = 25, order = 'most_viewed'): Promise<WatchVideo[]> => {
@@ -156,19 +141,12 @@ export default function WatchClient({
     async (
       targetVideo: WatchVideo | null,
       pageNum: number,
-      append: boolean,
       topicFilter: string = 'ALL'
     ) => {
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoadingRelated(true);
-      }
+      setLoadingRelated(true);
 
       const ctx = extractSmartTopics(targetVideo?.title || id, targetVideo?.keywords || '');
-      if (!append) {
-        setDetectedTopics(ctx.topics);
-      }
+      setDetectedTopics(ctx.topics);
 
       let queriesToRun: string[] = [];
       let rankingTopics: string[] = ctx.topics;
@@ -177,7 +155,6 @@ export default function WatchClient({
         queriesToRun = [topicFilter];
         rankingTopics = [topicFilter];
       } else {
-        // Combine multi-concept query + each individual extracted concept in parallel
         const qSet = new Set<string>();
         if (ctx.topics.length >= 2) qSet.add(ctx.comboQuery);
         for (const t of ctx.topics.slice(0, 3)) {
@@ -192,34 +169,13 @@ export default function WatchClient({
         )
       );
 
-      if (append) {
-        setMoreVideos((prev) => {
-          const excludeIds = new Set<string>([
-            id,
-            ...relatedRef.current.map((r) => r.id),
-            ...prev.map((p) => p.id),
-          ]);
-          const excludeTitles = new Set<string>([
-            ...(targetVideo?.title ? [normalizeTitleKey(targetVideo.title)] : []),
-            ...relatedRef.current.map((r) => normalizeTitleKey(r.title)),
-            ...prev.map((p) => normalizeTitleKey(p.title)),
-          ]);
-          const blended = rankAndBlendSimilarVideos(batches, rankingTopics, excludeIds, excludeTitles, 20);
-          return [...prev, ...blended];
-        });
-      } else {
-        const excludeIds = new Set<string>([id]);
-        const excludeTitles = new Set<string>(
-          targetVideo?.title ? [normalizeTitleKey(targetVideo.title)] : []
-        );
-        const blended = rankAndBlendSimilarVideos(batches, rankingTopics, excludeIds, excludeTitles, 25);
-        setRelated(blended);
-        setMoreVideos([]);
-        setExtraPages(0);
-      }
-
+      const excludeIds = new Set<string>([id]);
+      const excludeTitles = new Set<string>(
+        targetVideo?.title ? [normalizeTitleKey(targetVideo.title)] : []
+      );
+      const blended = rankAndBlendSimilarVideos(batches, rankingTopics, excludeIds, excludeTitles, 25);
+      setRelated(blended);
       setLoadingRelated(false);
-      setLoadingMore(false);
     },
     [id, fetchBatch]
   );
@@ -228,8 +184,6 @@ export default function WatchClient({
     let active = true;
     scrollTopNow();
     setRelatedPage(1);
-    setMoreVideos([]);
-    setExtraPages(0);
     setActiveTopic('ALL');
 
     const handleLoaded = (v: WatchVideo | null) => {
@@ -241,7 +195,7 @@ export default function WatchClient({
         }
         recordWatchedVideo(v as any);
       }
-      loadSmartSimilar(v, 1, false, 'ALL');
+      loadSmartSimilar(v, 1, 'ALL');
     };
 
     const initVideo = async () => {
@@ -358,21 +312,14 @@ export default function WatchClient({
   const handleTopicSelect = (topic: string) => {
     setActiveTopic(topic);
     setRelatedPage(1);
-    setExtraPages(0);
-    loadSmartSimilar(video, 1, false, topic);
-  };
-
-  const handleLoadMore = () => {
-    const nextBatch = relatedPage + extraPages + 1;
-    setExtraPages((prev) => prev + 1);
-    loadSmartSimilar(video, nextBatch, true, activeTopic);
+    loadSmartSimilar(video, 1, topic);
   };
 
   const handleRelatedPageChange = (newPage: number) => {
     const safePage = Math.max(1, newPage);
     scrollTopNow();
     setRelatedPage(safePage);
-    loadSmartSimilar(video, safePage, false, activeTopic);
+    loadSmartSimilar(video, safePage, activeTopic);
   };
 
   const tagList = video?.keywords
@@ -507,23 +454,18 @@ export default function WatchClient({
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
           <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
           <Link href="/pornstars" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
+          <Link href="/history" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">🕒 WATCH HISTORY</Link>
+          <Link href="/login" onClick={() => setShowMenu(false)} className="px-6 py-4 text-white text-lg font-medium flex items-center gap-3 border-b border-gray-700 hover:text-[#FF9900]">🔑 SIGN IN</Link>
+          <Link href="/signup" onClick={() => setShowMenu(false)} className="px-6 py-4 text-[#FF9900] text-lg font-bold flex items-center gap-3 border-b border-gray-700">✨ SIGN UP</Link>
         </div>
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div
-          key={`player-wrap-${id}`}
-          className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
-        >
-          <iframe
-            key={`player-frame-${id}`}
-            ref={iframeRef}
-            src={`https://www.eporner.com/embed/${encodeURIComponent(id)}/`}
-            className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
-            allow="autoplay; fullscreen"
-            allowFullScreen
-          />
-        </div>
+        <HubTubePlayer
+          id={id}
+          title={video?.title}
+          poster={video?.default_thumb?.src}
+        />
 
         <JuicyBanner />
 
@@ -574,10 +516,8 @@ export default function WatchClient({
             <h2 className="text-[#FF9900] text-xl md:text-2xl font-black">
               Similar Videos
             </h2>
-            <span className="text-sm text-gray-400">Page {relatedPage}</span>
           </div>
 
-          {/* Interactive Multi-Concept Topic Pills */}
           {detectedTopics.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-3">
               <button
@@ -625,45 +565,24 @@ export default function WatchClient({
           )}
         </section>
 
-        {moreVideos.length > 0 && (
-          <div className="mt-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {moreVideos.map((v) => (
-                <Link key={`more-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                  <VideoCard video={v} />
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-10 flex flex-col items-center gap-6">
+        {/* Bottom Pagination Only */}
+        <div className="mt-10 flex justify-center items-center gap-3">
           <button
-            onClick={handleLoadMore}
-            disabled={loadingMore}
-            className="bg-[#FF9900] hover:bg-orange-500 text-black px-12 py-4 rounded-full font-black text-lg transition disabled:opacity-60 shadow-lg"
+            onClick={() => handleRelatedPageChange(relatedPage - 1)}
+            disabled={relatedPage <= 1}
+            className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40 transition"
           >
-            {loadingMore ? 'Loading More...' : 'MORE VIDEOS'}
+            ← Prev Page
           </button>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => handleRelatedPageChange(relatedPage - 1)}
-              disabled={relatedPage <= 1}
-              className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40 transition"
-            >
-              ← Prev Page
-            </button>
-            <span className="px-4 py-2 bg-[#161616] rounded-full text-sm font-bold text-[#FF9900]">
-              Page {relatedPage}
-            </span>
-            <button
-              onClick={() => handleRelatedPageChange(relatedPage + 1)}
-              className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold transition"
-            >
-              Next Page →
-            </button>
-          </div>
+          <span className="px-4 py-2 bg-[#161616] rounded-full text-sm font-bold text-[#FF9900]">
+            Page {relatedPage}
+          </span>
+          <button
+            onClick={() => handleRelatedPageChange(relatedPage + 1)}
+            className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold transition"
+          >
+            Next Page →
+          </button>
         </div>
 
         <footer className="mt-16 pt-8 border-t border-gray-800">

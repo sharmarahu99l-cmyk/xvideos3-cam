@@ -202,12 +202,10 @@ export default function HomeClient({
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
   const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
-  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const [showVideoSub, setShowVideoSub] = useState<boolean>(false);
   const [page, setPage] = useState<number>(urlPage);
-  const [loadedExtraPages, setLoadedExtraPages] = useState<number>(0);
 
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
@@ -222,7 +220,6 @@ export default function HomeClient({
       scrollTopNow();
       setSearchQuery(urlQuery);
       setPage(urlPage);
-      setLoadedExtraPages(0);
       setSimilarVideos([]);
       setActiveSimTopic('ALL');
 
@@ -421,25 +418,6 @@ export default function HomeClient({
 
   const handlePageClick = (pageNum: number) => {
     navigateToSearch(urlQuery, pageNum);
-  };
-
-  const handleLoadMore = async () => {
-    if (loadingMore) return;
-    setLoadingMore(true);
-
-    const nextStep = loadedExtraPages + 1;
-    const nextBatchPage = page + nextStep;
-    const more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
-
-    const existingIds = new Set(videos.map((v) => v.id));
-    const uniqueNew = more.filter((v) => validThumb(v) && !existingIds.has(v.id));
-
-    if (uniqueNew.length > 0) {
-      setVideos((prev) => [...prev, ...uniqueNew]);
-      setLoadedExtraPages(nextStep);
-    }
-
-    setLoadingMore(false);
   };
 
   const pageWindow = getPageWindow(page, MAX_PAGES);
@@ -653,6 +631,9 @@ export default function HomeClient({
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
           <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
           <Link href="/pornstars" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
+          <Link href="/history" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">🕒 WATCH HISTORY</Link>
+          <Link href="/login" onClick={() => setShowMenu(false)} className="px-6 py-4 text-white text-lg font-medium flex items-center gap-3 border-b border-gray-700 hover:text-[#FF9900]">🔑 SIGN IN</Link>
+          <Link href="/signup" onClick={() => setShowMenu(false)} className="px-6 py-4 text-[#FF9900] text-lg font-bold flex items-center gap-3 border-b border-gray-700">✨ SIGN UP</Link>
         </div>
       )}
 
@@ -660,7 +641,6 @@ export default function HomeClient({
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h1 className="text-2xl md:text-3xl font-black text-[#FF9900] capitalize">
             {urlQuery ? `${urlQuery} Videos` : 'Trending Desi Videos, Viral MMS & HD Porn'}
-            {` — Page ${page} of ${MAX_PAGES}`}
           </h1>
           {urlQuery && (
             <button
@@ -674,41 +654,30 @@ export default function HomeClient({
 
         <JuicyBanner />
 
-        {renderPaginationBar()}
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-            {[...Array(15)].map((_, i) => (
-              <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />
-            ))}
-          </div>
-        ) : videos.length === 0 ? (
-          <div className="text-center py-20 text-yellow-500 text-xl">
-            No results found for &ldquo;{urlQuery}&rdquo;. Try another keyword or page.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-            {videos.map((v) => (
-              <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                <VideoCard video={v} />
-              </Link>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-10 space-y-4">
-          {videos.length > 0 && (
-            <div className="flex justify-center">
-              <button
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="px-10 py-3.5 bg-[#FF9900] text-black font-black rounded-full hover:bg-[#ffaa33] transition disabled:opacity-60 text-base shadow-lg"
-              >
-                {loadingMore ? 'Loading More Videos...' : 'LOAD MORE VIDEOS'}
-              </button>
+        <div className="mt-6">
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {[...Array(15)].map((_, i) => (
+                <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />
+              ))}
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="text-center py-20 text-yellow-500 text-xl">
+              No results found for &ldquo;{urlQuery}&rdquo;. Try another keyword or page.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {videos.map((v) => (
+                <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
+                  <VideoCard video={v} />
+                </Link>
+              ))}
             </div>
           )}
+        </div>
 
+        {/* Bottom Pagination Only */}
+        <div className="mt-10">
           {renderPaginationBar()}
         </div>
 
