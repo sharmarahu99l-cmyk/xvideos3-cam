@@ -19,7 +19,13 @@ type SearchHint = {
   type: 'category' | 'pornstar' | 'desi' | 'video';
 };
 
-const PER_PAGE = 60;
+interface HomeClientProps {
+  initialVideos?: Video[];
+  initialQuery?: string;
+  initialPage?: number;
+}
+
+const PER_PAGE = 30;
 const MAX_PAGES = 200;
 
 const FALLBACK_TOPICS = [
@@ -34,8 +40,19 @@ const FALLBACK_TOPICS = [
   'amateur',
 ];
 
+const SEO_DESI_HUB_LINKS = [
+  'Desi Videos', 'Desi Porn', 'Desi MMS', 'Viral Desi Videos', 'New Desi Videos',
+  'Desi Bhabhi', 'Indian Bhabhi', 'Desi Aunty', 'Indian Aunty', 'Indian Porn',
+  'Pakistani MMS', 'Pakistani Sex', 'Desi Chudai', 'Hindi Audio Sex', 'Punjabi Desi',
+  'Punjabi Kudi', 'Desi Homemade', 'Indian Homemade', 'Desi Couple', 'Desi College Girl',
+  'Desi Village Girl', 'Desi Saree Sex', 'Bhabhi Devar', 'South Indian Desi', 'Tamil Desi',
+  'Telugu Desi', 'Bengali Bhabhi', 'Marathi Bhabhi', 'Gujarati Aunty', 'Mallu Aunty',
+  'Bhojpuri Desi', 'Desi Leaked Scandal', 'Desi Hidden Cam', 'Desi Suhag Raat', 'Indian Wife',
+];
+
 const INSTANT_DESI = [
-  "Desi", "Desi Bhabhi", "Desi Aunty", "Desi MMS", "Desi Viral MMS", "Desi Sex",
+  "Desi", "Desi Videos", "Desi Porn", "Desi Bhabhi", "Desi Aunty", "Desi MMS",
+  "Desi Viral MMS", "Viral Desi Videos", "New Desi Videos", "Desi Sex",
   "Desi Chudai", "Desi Hardcore", "Desi Homemade", "Desi Couple", "Desi College Girl",
   "Desi Village Girl", "Desi Saree Sex", "Desi Salwar Suit", "Desi Hindi Audio",
   "Desi Punjabi", "Punjabi Kudi", "Pakistani MMS", "Pakistani Sex", "Indian Bhabhi",
@@ -130,8 +147,7 @@ async function fetchVideos(
   const searchTerm = query.trim() || 'desi';
   try {
     const res = await fetch(
-      `/api/search?q=${encodeURIComponent(searchTerm)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`,
-      { cache: 'no-store' }
+      `/api/search?q=${encodeURIComponent(searchTerm)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`
     );
     if (res.ok) {
       const data = await res.json();
@@ -143,8 +159,7 @@ async function fetchVideos(
 
   try {
     const directRes = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&format=json`,
-      { cache: 'no-store' }
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&format=json`
     );
     if (directRes.ok) {
       const directData = await directRes.json();
@@ -164,18 +179,25 @@ const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   video: { text: 'VIDEO', cls: 'bg-neutral-700 text-neutral-300' },
 };
 
-export default function HomeClient() {
+export default function HomeClient({
+  initialVideos = [],
+  initialQuery = '',
+  initialPage = 1,
+}: HomeClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const urlQuery = searchParams?.get('q') ?? '';
-  const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || 1));
+  const urlQuery = searchParams?.get('q') ?? initialQuery;
+  const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
 
-  const [videos, setVideos] = useState<Video[]>([]);
+  const hasSSRMatch =
+    initialVideos.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
+
+  const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? initialVideos : []);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
   const [forYouVideos, setForYouVideos] = useState<Video[]>([]);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
   const [showMenu, setShowMenu] = useState<boolean>(false);
@@ -195,7 +217,6 @@ export default function HomeClient() {
     const run = async () => {
       setSearchQuery(urlQuery);
       setPage(urlPage);
-      setLoading(true);
       setLoadedExtraPages(0);
       window.scrollTo(0, 0);
 
@@ -203,22 +224,31 @@ export default function HomeClient() {
         trackUserInterest([urlQuery.trim()]);
         document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
       } else if (urlPage > 1) {
-        document.title = `Desi & HD Porn Videos - Page ${urlPage} | HubTube - XVideos3`;
+        document.title = `Desi Videos & HD Porn - Page ${urlPage} | HubTube - XVideos3`;
       } else {
-        document.title = 'HubTube (XVideos3) - Free Desi, Indian & HD Porn Videos';
+        document.title = 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3';
       }
 
       const prefs = getTopPreferences(3);
       const prefQuery = prefs[0] || FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
       setRecentHistory(getWatchHistory(5));
 
-      const [initialFetched, similar, personalized] = await Promise.all([
-        fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
+      const usingSSRMain =
+        initialVideos.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
+
+      if (!usingSSRMain) {
+        setLoading(true);
+      }
+
+      const [fetchedMain, similar, personalized] = await Promise.all([
+        usingSSRMain
+          ? Promise.resolve(initialVideos)
+          : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
         fetchVideos(urlQuery || 'desi bhabhi', urlPage + 2, 15, 'top-rated'),
         fetchVideos(prefQuery, (urlPage % 10) + 1, 15, 'latest'),
       ]);
 
-      let fetched = initialFetched;
+      let fetched = fetchedMain;
       if (fetched.length === 0) {
         const fallbackTopic = FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
         fetched = await fetchVideos(fallbackTopic, (urlPage % 20) + 1, PER_PAGE, 'most_viewed');
@@ -261,7 +291,7 @@ export default function HomeClient() {
     return () => {
       active = false;
     };
-  }, [urlQuery, urlPage]);
+  }, [urlQuery, urlPage, initialVideos, initialQuery, initialPage]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -293,7 +323,6 @@ export default function HomeClient() {
       try {
         const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
           signal: controller.signal,
-          cache: 'no-store',
         });
         if (!res.ok) return;
         const data: { hints?: SearchHint[] } = await res.json();
@@ -495,7 +524,7 @@ export default function HomeClient() {
                   setShowHints(val.trim().length > 0);
                 }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search desi, bhabhi, pornstars, categories..."
+                placeholder="Search desi videos, desi mms, bhabhi, pornstars..."
                 autoComplete="off"
                 className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full pl-5 pr-20 py-2.5 text-base focus:outline-none text-white placeholder-gray-400"
               />
@@ -607,6 +636,7 @@ export default function HomeClient() {
             </div>
           )}
           <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
+          <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
           <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
           <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
@@ -617,7 +647,7 @@ export default function HomeClient() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h1 className="text-2xl md:text-3xl font-black text-[#FF9900]">
-            {urlQuery ? `Results for "${urlQuery}"` : 'Trending Desi & HD Videos'}
+            {urlQuery ? `${urlQuery} Videos` : 'Trending Desi Videos, Viral MMS & HD Porn'}
             {` — Page ${page} of ${MAX_PAGES}`}
           </h1>
           {urlQuery && (
@@ -671,7 +701,8 @@ export default function HomeClient() {
 
           {renderPaginationBar()}
         </div>
-<JuicyBanner adzone={1133788} width={308} height={286} />
+
+        <JuicyBanner adzone={1133788} width={308} height={286} />
 
         {/* Personalized Recommendations Based on User Preferences */}
         {!loading && forYouVideos.length > 0 && (
@@ -696,7 +727,7 @@ export default function HomeClient() {
             </div>
           </section>
         )}
-<JuicyBanner adzone={1133788} width={308} height={286} />
+
         {/* Similar Videos You May Also Like */}
         {!loading && similarVideos.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
@@ -720,7 +751,7 @@ export default function HomeClient() {
             </div>
           </section>
         )}
-<JuicyBanner adzone={1133788} width={308} height={286} />
+
         {/* Recently Watched */}
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
@@ -736,6 +767,27 @@ export default function HomeClient() {
             </div>
           </section>
         )}
+
+        {/* Crawlable Desi & Viral Video Keyword Hub for Google SEO */}
+        <footer className="mt-16 pt-8 border-t border-gray-800">
+          <h2 className="text-lg font-black text-[#FF9900] mb-3">
+            Popular Desi Videos, Viral MMS &amp; HD Categories
+          </h2>
+          <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+            HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {SEO_DESI_HUB_LINKS.map((term) => (
+              <Link
+                key={term}
+                href={`/?q=${encodeURIComponent(term.toLowerCase())}`}
+                className="text-xs bg-[#161616] hover:bg-[#FF9900] hover:text-black text-gray-300 px-3 py-1.5 rounded-full border border-gray-800 transition"
+              >
+                {term}
+              </Link>
+            ))}
+          </div>
+        </footer>
       </div>
     </div>
   );

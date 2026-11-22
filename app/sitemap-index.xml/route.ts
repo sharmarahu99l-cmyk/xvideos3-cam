@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const TOTAL_SITEMAP_SHARDS = 100;
+const TOTAL_SITEMAP_SHARDS = 1000;
 
 export async function GET() {
   const now = new Date().toISOString();

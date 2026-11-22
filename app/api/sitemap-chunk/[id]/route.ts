@@ -9,14 +9,29 @@ interface EpornerVideo {
   added?: string;
 }
 
-const SITEMAP_TOPICS = [
-  'desi', 'desi bhabhi', 'indian', 'pakistani', 'aunty', 'hindi audio', 'punjabi',
-  'tamil', 'telugu', 'bengali', 'viral mms', 'desi homemade', 'japanese', 'anal',
-  '1080p', 'teen', 'vr', 'asian', 'big tits', 'milf', 'ebony', 'homemade',
-  'interracial', 'amateur', 'lesbian', '60fps', 'big ass', 'pov', 'mature',
-  'creampie', 'hentai', 'bbw', 'hardcore', 'threesome', 'latina', 'big dick',
-  'pornstar', 'blowjob', 'cumshot', 'blonde', 'petite', 'office', 'bdsm',
-  'brunette', 'massage', 'lingerie', 'outdoor', 'squirt', 'redhead', '4k',
+// High-priority Desi & viral search terms indexed first across shards 0-299
+const DESI_PRIORITY_TOPICS = [
+  'desi', 'desi videos', 'desi porn', 'desi mms', 'viral desi', 'new desi',
+  'desi bhabhi', 'indian bhabhi', 'desi aunty', 'indian aunty', 'desi sex',
+  'indian porn', 'indian sex', 'pakistani mms', 'pakistani sex', 'desi chudai',
+  'hindi audio', 'punjabi desi', 'punjabi kudi', 'desi homemade', 'indian homemade',
+  'desi couple', 'desi college girl', 'desi village girl', 'desi saree',
+  'bhabhi devar', 'south indian desi', 'tamil desi', 'telugu desi', 'bengali bhabhi',
+  'marathi bhabhi', 'gujarati aunty', 'mallu aunty', 'bhojpuri desi', 'desi leaked',
+  'desi hidden cam', 'desi suhag raat', 'indian wife', 'indian viral', 'desi hardcore',
+];
+
+// Full Eporner catalog topics across shards 300-999
+const GLOBAL_CATALOG_TOPICS = [
+  'japanese', 'anal', '1080p', 'teen', 'vr', 'asian', 'big tits', 'shemale',
+  'milf', 'gay', 'ebony', 'homemade', 'interracial', 'amateur', 'lesbian',
+  '60fps', 'big ass', 'pov', 'mature', 'creampie', 'hentai', 'bbw',
+  'hardcore', 'threesome', 'latina', 'big dick', 'pornstar', 'double penetration',
+  'vintage', 'group sex', 'blowjob', 'cumshot', 'masturbation', 'students',
+  'blonde', 'petite', 'orgy', 'webcam', 'office', 'bdsm', 'public',
+  'brunette', 'massage', 'lingerie', 'toys', 'hotel', 'outdoor', 'squirt',
+  'fetish', 'redhead', 'housewives', 'swinger', 'bukkake', 'uniform',
+  'striptease', 'bondage', 'nurses', 'handjob', 'fisting', '4k',
 ];
 
 function escapeXml(str: string): string {
@@ -33,30 +48,36 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const shardId = Math.max(0, Math.min(999, parseInt(id, 10) || 0));
+  const shardId = Math.max(0, Math.min(2000, parseInt(id, 10) || 0));
   const baseUrl = 'https://xvideos3.cam';
   const now = new Date().toISOString();
 
-  const topic = SITEMAP_TOPICS[shardId % SITEMAP_TOPICS.length];
-  const apiPage = Math.floor(shardId / SITEMAP_TOPICS.length) + 1;
+  let topic: string;
+  let apiPage: number;
+  let order: string;
+
+  if (shardId < 300) {
+    topic = DESI_PRIORITY_TOPICS[shardId % DESI_PRIORITY_TOPICS.length];
+    apiPage = Math.floor(shardId / DESI_PRIORITY_TOPICS.length) + 1;
+    order = shardId % 2 === 0 ? 'latest' : 'most-popular';
+  } else {
+    const globalIdx = shardId - 300;
+    topic = GLOBAL_CATALOG_TOPICS[globalIdx % GLOBAL_CATALOG_TOPICS.length];
+    apiPage = Math.floor(globalIdx / GLOBAL_CATALOG_TOPICS.length) + 1;
+    order = globalIdx % 2 === 0 ? 'latest' : 'top-rated';
+  }
 
   const urlBlocks: string[] = [];
 
-  // Shard 0 also includes core hub & top Desi landing pages
+  // Shard 0 includes all primary Desi & site landing pages for instant Google crawling
   if (shardId === 0) {
-    const corePaths = [
+    const coreLandingPaths = [
       '/',
       '/categories',
       '/pornstars',
-      '/?q=desi',
-      '/?q=desi%20bhabhi',
-      '/?q=indian',
-      '/?q=pakistani',
-      '/?q=aunty',
-      '/?q=hindi%20audio',
-      '/?q=viral%20mms',
+      ...DESI_PRIORITY_TOPICS.map((t) => `/?q=${encodeURIComponent(t)}`),
     ];
-    for (const p of corePaths) {
+    for (const p of coreLandingPaths) {
       urlBlocks.push(`  <url>
     <loc>${escapeXml(`${baseUrl}${p}`)}</loc>
     <lastmod>${now}</lastmod>
@@ -70,7 +91,7 @@ export async function GET(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(topic)}&per_page=100&page=${apiPage}&order=latest&format=json`,
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(topic)}&per_page=100&page=${apiPage}&order=${order}&format=json`,
       {
         signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
@@ -86,14 +107,16 @@ export async function GET(
         if (!v.id || !v.title) continue;
         const durationSec = (v.length_min || 0) * 60 + (v.length_sec || 0);
         const safeTitle = escapeXml(v.title.trim().slice(0, 100));
-        const safeDesc = escapeXml(`Watch ${v.title.trim()} full HD video free on HubTube (XVideos3.cam).`);
+        const safeDesc = escapeXml(
+          `Watch ${v.title.trim()} full HD Desi & adult video free on HubTube (XVideos3.cam).`
+        );
         const thumb = v.default_thumb?.src ? escapeXml(v.default_thumb.src) : '';
 
         urlBlocks.push(`  <url>
     <loc>${escapeXml(`${baseUrl}/watch/${v.id}`)}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
-    <priority>0.8</priority>${
+    <priority>0.85</priority>${
       thumb
         ? `
     <video:video>
@@ -110,7 +133,7 @@ export async function GET(
       }
     }
   } catch {
-    // Return whatever URLs were collected without failing XML response
+    // Return collected URLs cleanly without breaking XML
   }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
