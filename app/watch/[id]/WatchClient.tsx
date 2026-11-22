@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from '../../VideoCard';
 import JuicyBanner from '../../JuicyBanner';
+import HubTubePlayer from './HubTubePlayer';
 import {
   recordWatchedVideo,
   extractSmartTopics,
