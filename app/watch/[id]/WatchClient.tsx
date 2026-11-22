@@ -7,7 +7,9 @@ import VideoCard from '../../VideoCard';
 import JuicyBanner from '../../JuicyBanner';
 import {
   recordWatchedVideo,
-  resolveContentContext,
+  extractSmartTopics,
+  rankAndBlendSimilarVideos,
+  normalizeTitleKey,
 } from '../../lib/userPrefs';
 
 export type WatchVideo = {
@@ -92,9 +94,8 @@ export default function WatchClient({
   const [video, setVideo] = useState<WatchVideo | null>(initialVideo);
   const [related, setRelated] = useState<WatchVideo[]>([]);
   const [moreVideos, setMoreVideos] = useState<WatchVideo[]>([]);
-  const [forYouVideos, setForYouVideos] = useState<WatchVideo[]>([]);
-  const [similarLabel, setSimilarLabel] = useState<string>('Similar Videos You May Also Like');
-  const [pickedLabel, setPickedLabel] = useState<string>('Picked For You');
+  const [detectedTopics, setDetectedTopics] = useState<string[]>([]);
+  const [activeTopic, setActiveTopic] = useState<string>('ALL');
   const [loadingRelated, setLoadingRelated] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [showMenu, setShowMenu] = useState<boolean>(false);
@@ -123,7 +124,7 @@ export default function WatchClient({
   }, [id]);
 
   const fetchBatch = useCallback(
-    async (query: string, pageNum: number, perPage = 30, order = 'most_viewed'): Promise<WatchVideo[]> => {
+    async (query: string, pageNum: number, perPage = 25, order = 'most_viewed'): Promise<WatchVideo[]> => {
       try {
         const res = await fetch(
           `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`
@@ -151,92 +152,70 @@ export default function WatchClient({
     []
   );
 
-  const loadLogicalSections = useCallback(
-    async (targetVideo: WatchVideo | null, pageNum: number, append: boolean) => {
+  const loadSmartSimilar = useCallback(
+    async (
+      targetVideo: WatchVideo | null,
+      pageNum: number,
+      append: boolean,
+      topicFilter: string = 'ALL'
+    ) => {
       if (append) {
         setLoadingMore(true);
       } else {
         setLoadingRelated(true);
       }
 
-      const ctx = resolveContentContext(targetVideo?.title || id, targetVideo?.keywords || '', pageNum);
-
+      const ctx = extractSmartTopics(targetVideo?.title || id, targetVideo?.keywords || '');
       if (!append) {
-        if (ctx.type === 'pornstar') {
-          setSimilarLabel(`More ${ctx.primarySubject} Videos`);
-          setPickedLabel(`Picked For You • Other Top Pornstars (${ctx.peerQueries.slice(0, 2).join(', ')})`);
-        } else {
-          setSimilarLabel(`Similar ${ctx.primarySubject} Videos`);
-          setPickedLabel(`Picked For You • ${ctx.peerQueries.slice(0, 2).join(' & ')}`);
-        }
+        setDetectedTopics(ctx.topics);
       }
 
-      const peerList = ctx.peerQueries.length > 0 ? ctx.peerQueries : ['desi bhabhi', 'indian aunty'];
+      let queriesToRun: string[] = [];
+      let rankingTopics: string[] = ctx.topics;
 
-      const [simFetched, ...peerBatches] = await Promise.all([
-        fetchBatch(ctx.similarQuery, pageNum, 30, 'most_viewed'),
-        ...(append
-          ? []
-          : peerList.slice(0, 2).map((peerTerm) => fetchBatch(peerTerm, pageNum, 12, 'top-rated'))),
-      ]);
+      if (topicFilter !== 'ALL') {
+        queriesToRun = [topicFilter];
+        rankingTopics = [topicFilter];
+      } else {
+        // Combine multi-concept query + each individual extracted concept in parallel
+        const qSet = new Set<string>();
+        if (ctx.topics.length >= 2) qSet.add(ctx.comboQuery);
+        for (const t of ctx.topics.slice(0, 3)) {
+          qSet.add(t);
+        }
+        queriesToRun = Array.from(qSet);
+      }
 
-      const strictSim =
-        ctx.type === 'pornstar'
-          ? [
-              ...simFetched.filter((v) =>
-                `${v.title} ${v.keywords || ''}`.toLowerCase().includes(ctx.primarySubject.toLowerCase())
-              ),
-              ...simFetched,
-            ]
-          : simFetched;
+      const batches = await Promise.all(
+        queriesToRun.map((q, idx) =>
+          fetchBatch(q, pageNum, topicFilter !== 'ALL' ? 30 : 18, idx === 0 ? 'most_viewed' : 'top-rated')
+        )
+      );
 
       if (append) {
         setMoreVideos((prev) => {
-          const seen = new Set<string>([
+          const excludeIds = new Set<string>([
             id,
             ...relatedRef.current.map((r) => r.id),
             ...prev.map((p) => p.id),
           ]);
-          const uniqueNew: WatchVideo[] = [];
-          for (const v of strictSim) {
-            if (validThumb(v) && !seen.has(v.id)) {
-              seen.add(v.id);
-              uniqueNew.push(v);
-            }
-          }
-          return [...prev, ...uniqueNew.slice(0, 20)];
+          const excludeTitles = new Set<string>([
+            ...(targetVideo?.title ? [normalizeTitleKey(targetVideo.title)] : []),
+            ...relatedRef.current.map((r) => normalizeTitleKey(r.title)),
+            ...prev.map((p) => normalizeTitleKey(p.title)),
+          ]);
+          const blended = rankAndBlendSimilarVideos(batches, rankingTopics, excludeIds, excludeTitles, 20);
+          return [...prev, ...blended];
         });
       } else {
-        const seen = new Set<string>([id]);
-        const uniqueSim: WatchVideo[] = [];
-        for (const v of strictSim) {
-          if (validThumb(v) && !seen.has(v.id)) {
-            seen.add(v.id);
-            uniqueSim.push(v);
-          }
-        }
-        const finalSim = uniqueSim.slice(0, 20);
-        setRelated(finalSim);
+        const excludeIds = new Set<string>([id]);
+        const excludeTitles = new Set<string>(
+          targetVideo?.title ? [normalizeTitleKey(targetVideo.title)] : []
+        );
+        const blended = rankAndBlendSimilarVideos(batches, rankingTopics, excludeIds, excludeTitles, 25);
+        setRelated(blended);
         setMoreVideos([]);
         setExtraPages(0);
-
-        const interleavedPeers: WatchVideo[] = [];
-        const maxLen = Math.max(0, ...peerBatches.map((b) => b.length));
-        for (let i = 0; i < maxLen; i++) {
-          for (const batch of peerBatches) {
-            if (batch[i]) interleavedPeers.push(batch[i]);
-          }
-        }
-
-        const primaryLower = ctx.primarySubject.toLowerCase();
-        const uniqueRec: WatchVideo[] = [];
-        for (const v of interleavedPeers) {
-          if (!validThumb(v) || seen.has(v.id)) continue;
-          if (ctx.type === 'pornstar' && v.title.toLowerCase().includes(primaryLower)) continue;
-          seen.add(v.id);
-          uniqueRec.push(v);
-        }
-        setForYouVideos(uniqueRec.slice(0, 15));
       }
 
       setLoadingRelated(false);
@@ -251,7 +230,7 @@ export default function WatchClient({
     setRelatedPage(1);
     setMoreVideos([]);
     setExtraPages(0);
-    setForYouVideos([]);
+    setActiveTopic('ALL');
 
     const handleLoaded = (v: WatchVideo | null) => {
       if (!active) return;
@@ -262,7 +241,7 @@ export default function WatchClient({
         }
         recordWatchedVideo(v as any);
       }
-      loadLogicalSections(v, 1, false);
+      loadSmartSimilar(v, 1, false, 'ALL');
     };
 
     const initVideo = async () => {
@@ -302,7 +281,7 @@ export default function WatchClient({
     return () => {
       active = false;
     };
-  }, [id, initialVideo, loadLogicalSections]);
+  }, [id, initialVideo, loadSmartSimilar]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -376,17 +355,24 @@ export default function WatchClient({
     }
   };
 
+  const handleTopicSelect = (topic: string) => {
+    setActiveTopic(topic);
+    setRelatedPage(1);
+    setExtraPages(0);
+    loadSmartSimilar(video, 1, false, topic);
+  };
+
   const handleLoadMore = () => {
     const nextBatch = relatedPage + extraPages + 1;
     setExtraPages((prev) => prev + 1);
-    loadLogicalSections(video, nextBatch, true);
+    loadSmartSimilar(video, nextBatch, true, activeTopic);
   };
 
   const handleRelatedPageChange = (newPage: number) => {
     const safePage = Math.max(1, newPage);
     scrollTopNow();
     setRelatedPage(safePage);
-    loadLogicalSections(video, safePage, false);
+    loadSmartSimilar(video, safePage, false, activeTopic);
   };
 
   const tagList = video?.keywords
@@ -525,7 +511,6 @@ export default function WatchClient({
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Clean Video Player: Cropped Top Edge so No Text Shows on Player */}
         <div
           key={`player-wrap-${id}`}
           className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
@@ -583,13 +568,45 @@ export default function WatchClient({
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        <div id="similar-videos-section" className="mt-10">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="text-[#FF9900] text-xl md:text-2xl font-bold capitalize">
-              {similarLabel}
+        {/* Smart Multi-Topic Similar Videos Section */}
+        <section id="similar-videos-section" className="mt-10">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-[#FF9900] text-xl md:text-2xl font-black">
+              Similar Videos
             </h2>
             <span className="text-sm text-gray-400">Page {relatedPage}</span>
           </div>
+
+          {/* Interactive Multi-Concept Topic Pills */}
+          {detectedTopics.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-3">
+              <button
+                type="button"
+                onClick={() => handleTopicSelect('ALL')}
+                className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-bold shrink-0 transition border ${
+                  activeTopic === 'ALL'
+                    ? 'bg-[#FF9900] text-black border-[#FF9900]'
+                    : 'bg-[#161616] text-gray-300 border-gray-800 hover:border-[#FF9900]'
+                }`}
+              >
+                All Matched ({detectedTopics.join(' + ')})
+              </button>
+              {detectedTopics.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  onClick={() => handleTopicSelect(topic)}
+                  className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-bold shrink-0 transition border ${
+                    activeTopic === topic
+                      ? 'bg-[#FF9900] text-black border-[#FF9900]'
+                      : 'bg-[#161616] text-gray-300 border-gray-800 hover:border-[#FF9900]'
+                  }`}
+                >
+                  {topic}
+                </button>
+              ))}
+            </div>
+          )}
 
           {loadingRelated ? (
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -606,7 +623,7 @@ export default function WatchClient({
               ))}
             </div>
           )}
-        </div>
+        </section>
 
         {moreVideos.length > 0 && (
           <div className="mt-8">
@@ -648,21 +665,6 @@ export default function WatchClient({
             </button>
           </div>
         </div>
-
-        {forYouVideos.length > 0 && (
-          <section className="mt-14 pt-8 border-t border-gray-800">
-            <h2 className="text-[#FF9900] text-xl md:text-2xl font-bold mb-6 capitalize">
-              {pickedLabel}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {forYouVideos.map((v) => (
-                <Link key={`pref-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                  <VideoCard video={v} />
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
 
         <footer className="mt-16 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">

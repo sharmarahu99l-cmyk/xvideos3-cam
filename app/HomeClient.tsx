@@ -10,7 +10,9 @@ import {
   trackUserInterest,
   getTopPreferences,
   getWatchHistory,
-  resolveContentContext,
+  extractSmartTopics,
+  rankAndBlendSimilarVideos,
+  normalizeTitleKey,
 } from './lib/userPrefs';
 
 type Video = StoredVideo;
@@ -195,10 +197,10 @@ export default function HomeClient({
 
   const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? validInitial : []);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
-  const [forYouVideos, setForYouVideos] = useState<Video[]>([]);
+  const [similarTopics, setSimilarTopics] = useState<string[]>([]);
+  const [activeSimTopic, setActiveSimTopic] = useState<string>('ALL');
+  const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
-  const [recHeading, setRecHeading] = useState<string>('Picked For You');
-  const [simHeading, setSimHeading] = useState<string>('Similar Videos You May Also Like');
   const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
@@ -222,7 +224,7 @@ export default function HomeClient({
       setPage(urlPage);
       setLoadedExtraPages(0);
       setSimilarVideos([]);
-      setForYouVideos([]);
+      setActiveSimTopic('ALL');
 
       if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
@@ -233,19 +235,18 @@ export default function HomeClient({
         document.title = 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3';
       }
 
+      const history = getWatchHistory(5).filter(validThumb);
+      setRecentHistory(history);
+
       const prefs = getTopPreferences(4);
-      const activeSeed = urlQuery.trim() || prefs[0] || 'desi bhabhi';
-      const ctx = resolveContentContext(activeSeed, '', urlPage);
+      const seedText =
+        urlQuery.trim() ||
+        history[0]?.title ||
+        prefs.slice(0, 3).join(' ') ||
+        'desi bhabhi indian homemade';
 
-      if (ctx.type === 'pornstar') {
-        setSimHeading(`More ${ctx.primarySubject} Videos`);
-        setRecHeading(`Picked For You • Other Top Pornstars (${ctx.peerQueries.slice(0, 2).join(', ')})`);
-      } else {
-        setSimHeading(`Similar ${ctx.primarySubject} Videos`);
-        setRecHeading(`Picked For You • ${ctx.peerQueries.slice(0, 2).join(' & ')}`);
-      }
-
-      setRecentHistory(getWatchHistory(5).filter(validThumb));
+      const ctx = extractSmartTopics(seedText, history[0]?.keywords || '');
+      setSimilarTopics(ctx.topics);
 
       const usingSSRMain =
         validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
@@ -254,65 +255,44 @@ export default function HomeClient({
         setLoading(true);
       }
 
-      const peerList = ctx.peerQueries.length > 0 ? ctx.peerQueries : ['desi bhabhi', 'indian aunty'];
+      const simQuerySet = new Set<string>();
+      if (ctx.topics.length >= 2) simQuerySet.add(ctx.comboQuery);
+      for (const t of ctx.topics.slice(0, 3)) simQuerySet.add(t);
+      const simQueries = Array.from(simQuerySet);
 
-      const [fetchedMain, similar, ...peerBatches] = await Promise.all([
+      const [fetchedMain, ...simBatches] = await Promise.all([
         usingSSRMain
           ? Promise.resolve(validInitial)
           : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
-        fetchVideos(ctx.similarQuery, urlPage + 2, 18, 'top-rated'),
-        ...peerList.slice(0, 2).map((peerTerm) => fetchVideos(peerTerm, urlPage, 12, 'most_viewed')),
+        ...simQueries.map((q, idx) =>
+          fetchVideos(q, urlPage + 2, 16, idx === 0 ? 'top-rated' : 'most_viewed')
+        ),
       ]);
 
       if (!active) return;
 
       const seenIds = new Set<string>();
+      const seenTitles = new Set<string>();
       const uniqueMain: Video[] = [];
       for (const v of fetchedMain) {
-        if (validThumb(v) && !seenIds.has(v.id)) {
+        const norm = normalizeTitleKey(v.title);
+        if (validThumb(v) && !seenIds.has(v.id) && !seenTitles.has(norm)) {
           seenIds.add(v.id);
+          seenTitles.add(norm);
           uniqueMain.push(v);
         }
       }
 
-      const strictSim =
-        ctx.type === 'pornstar'
-          ? [
-              ...similar.filter((v) =>
-                `${v.title} ${v.keywords || ''}`.toLowerCase().includes(ctx.primarySubject.toLowerCase())
-              ),
-              ...similar,
-            ]
-          : similar;
-
-      const uniqueSimilar: Video[] = [];
-      for (const v of strictSim) {
-        if (validThumb(v) && !seenIds.has(v.id)) {
-          seenIds.add(v.id);
-          uniqueSimilar.push(v);
-        }
-      }
-
-      const interleavedPeers: Video[] = [];
-      const maxLen = Math.max(0, ...peerBatches.map((b) => b.length));
-      for (let i = 0; i < maxLen; i++) {
-        for (const batch of peerBatches) {
-          if (batch[i]) interleavedPeers.push(batch[i]);
-        }
-      }
-
-      const primaryLower = ctx.primarySubject.toLowerCase();
-      const uniqueForYou: Video[] = [];
-      for (const v of interleavedPeers) {
-        if (!validThumb(v) || seenIds.has(v.id)) continue;
-        if (ctx.type === 'pornstar' && v.title.toLowerCase().includes(primaryLower)) continue;
-        seenIds.add(v.id);
-        uniqueForYou.push(v);
-      }
+      const blendedSimilar = rankAndBlendSimilarVideos(
+        simBatches,
+        ctx.topics,
+        seenIds,
+        seenTitles,
+        15
+      );
 
       setVideos(uniqueMain);
-      setSimilarVideos(uniqueSimilar.slice(0, 10));
-      setForYouVideos(uniqueForYou.slice(0, 15));
+      setSimilarVideos(blendedSimilar);
       setLoading(false);
     };
 
@@ -321,6 +301,30 @@ export default function HomeClient({
       active = false;
     };
   }, [urlQuery, urlPage, initialQuery, initialPage]);
+
+  const handleSimilarTopicClick = async (topic: string) => {
+    setActiveSimTopic(topic);
+    setLoadingSimilar(true);
+
+    const excludeIds = new Set<string>(videos.map((v) => v.id));
+    const excludeTitles = new Set<string>(videos.map((v) => normalizeTitleKey(v.title)));
+
+    const queries = topic === 'ALL' ? similarTopics.slice(0, 3) : [topic];
+    const batches = await Promise.all(
+      queries.map((q) => fetchVideos(q, page + 2, topic === 'ALL' ? 16 : 24, 'top-rated'))
+    );
+
+    const blended = rankAndBlendSimilarVideos(
+      batches,
+      topic === 'ALL' ? similarTopics : [topic],
+      excludeIds,
+      excludeTitles,
+      15
+    );
+
+    setSimilarVideos(blended);
+    setLoadingSimilar(false);
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -710,12 +714,12 @@ export default function HomeClient({
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Section 1: Exact Match (e.g., Only Angela White if searching Angela White) */}
+        {/* Smart Multi-Topic Similar Videos Section */}
         {!loading && similarVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl md:text-2xl font-black text-[#FF9900] capitalize">
-                {simHeading}
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-xl md:text-2xl font-black text-[#FF9900]">
+                Similar Videos You May Like
               </h2>
               <button
                 onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
@@ -724,37 +728,52 @@ export default function HomeClient({
                 Next Page →
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {similarVideos.map((v) => (
-                <Link key={`sim-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                  <VideoCard video={v} />
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
 
-        {/* Section 2: Logically Related Other Pornstars / Sub-Categories */}
-        {!loading && forYouVideos.length > 0 && (
-          <section className="mt-12 pt-8 border-t border-gray-800">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl md:text-2xl font-black text-[#FF9900] capitalize">
-                {recHeading}
-              </h2>
-              <button
-                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
-                className="text-sm font-bold text-[#FF9900] hover:underline"
-              >
-                Explore More →
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {forYouVideos.map((v) => (
-                <Link key={`foryou-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                  <VideoCard video={v} />
-                </Link>
-              ))}
-            </div>
+            {similarTopics.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-3">
+                <button
+                  type="button"
+                  onClick={() => handleSimilarTopicClick('ALL')}
+                  className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-bold shrink-0 transition border ${
+                    activeSimTopic === 'ALL'
+                      ? 'bg-[#FF9900] text-black border-[#FF9900]'
+                      : 'bg-[#161616] text-gray-300 border-gray-800 hover:border-[#FF9900]'
+                  }`}
+                >
+                  All Matched ({similarTopics.join(' + ')})
+                </button>
+                {similarTopics.map((topic) => (
+                  <button
+                    key={topic}
+                    type="button"
+                    onClick={() => handleSimilarTopicClick(topic)}
+                    className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-bold shrink-0 transition border ${
+                      activeSimTopic === topic
+                        ? 'bg-[#FF9900] text-black border-[#FF9900]'
+                        : 'bg-[#161616] text-gray-300 border-gray-800 hover:border-[#FF9900]'
+                    }`}
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {loadingSimilar ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                {[...Array(10)].map((_, i) => (
+                  <div key={i} className="bg-[#1a1a1a] rounded-2xl aspect-video animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                {similarVideos.map((v) => (
+                  <Link key={`sim-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
+                    <VideoCard video={v} />
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -773,7 +792,6 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Desi SEO Tags Hub at the Bottom of the Page */}
         <footer className="mt-16 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories
