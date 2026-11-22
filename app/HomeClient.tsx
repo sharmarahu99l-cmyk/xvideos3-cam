@@ -495,13 +495,13 @@ export default function HomeClient({
       <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-800">
         <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto">
           <Link href="/" onClick={scrollTopNow} className="flex items-center gap-0.5 shrink-0">
-            <span className="text-3xl md:text-4xl font-black text-[#FF9900]">H</span>
-            <span className="text-3xl md:text-4xl font-black text-white">UB</span>
-            <span className="text-3xl md:text-4xl font-black text-[#FF9900]">T</span>
-            <span className="text-3xl md:text-4xl font-black text-white">UBE</span>
+            <span className="text-2xl sm:text-3xl md:text-4xl font-black text-[#FF9900]">H</span>
+            <span className="text-2xl sm:text-3xl md:text-4xl font-black text-white">UB</span>
+            <span className="text-2xl sm:text-3xl md:text-4xl font-black text-[#FF9900]">T</span>
+            <span className="text-2xl sm:text-3xl md:text-4xl font-black text-white">UBE</span>
           </Link>
 
-          <div ref={searchWrapRef} className="relative flex-1 max-w-xl mx-2">
+          <div ref={searchWrapRef} className="relative flex-1 max-w-xl mx-1 sm:mx-2">
             <form onSubmit={handleSearch} className="relative flex items-center">
               <input
                 value={searchQuery}
@@ -514,9 +514,9 @@ export default function HomeClient({
                   setShowHints(val.trim().length > 0);
                 }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search desi videos, desi mms, bhabhi, pornstars..."
+                placeholder="Search desi videos, bhabhi, pornstars..."
                 autoComplete="off"
-                className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full pl-5 pr-20 py-2.5 text-base focus:outline-none text-white placeholder-gray-400"
+                className="w-full bg-[#222] border-2 border-[#FF9900] rounded-full pl-4 pr-14 sm:pr-20 py-2 text-sm sm:text-base focus:outline-none text-white placeholder-gray-400"
               />
               {searchQuery && (
                 <button
@@ -527,7 +527,7 @@ export default function HomeClient({
                     setShowHints(false);
                   }}
                   aria-label="Clear search"
-                  className="absolute right-12 text-gray-400 hover:text-white px-2 text-lg"
+                  className="absolute right-11 text-gray-400 hover:text-white px-1.5 text-base"
                 >
                   ✕
                 </button>
@@ -535,7 +535,7 @@ export default function HomeClient({
               <button
                 type="submit"
                 aria-label="Search"
-                className="absolute right-1.5 bg-[#FF9900] text-black font-bold rounded-full w-9 h-9 flex items-center justify-center hover:bg-[#ffaa33]"
+                className="absolute right-1.5 bg-[#FF9900] text-black font-bold rounded-full w-8 h-8 flex items-center justify-center hover:bg-[#ffaa33]"
               >
                 🔍
               </button>
@@ -580,10 +580,18 @@ export default function HomeClient({
             )}
           </div>
 
+          <Link
+            href="/reels"
+            className="bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black text-xs md:text-sm px-3 py-2 rounded-full flex items-center gap-1 shrink-0 shadow-md transition"
+          >
+            <span>▶</span>
+            <span>REELS</span>
+          </Link>
+
           <button
             onClick={() => setShowMenu(!showMenu)}
             aria-label="Menu"
-            className="text-4xl text-[#FF9900] px-2 shrink-0"
+            className="text-3xl sm:text-4xl text-[#FF9900] px-1 shrink-0"
           >
             ☰
           </button>
@@ -626,6 +634,7 @@ export default function HomeClient({
             </div>
           )}
           <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
+          <Link href="/reels" onClick={() => setShowMenu(false)} className="px-6 py-4 text-[#FF9900] text-lg font-black flex items-center gap-3 border-b border-gray-700">🎬 REELS (SWIPE)</Link>
           <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
           <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
@@ -654,6 +663,57 @@ export default function HomeClient({
 
         {/* Top Banner Ad */}
         <JuicyBanner />
+
+        {/* Homepage HubReels Shelf (Vertical 9:16 Reels Strip) */}
+        {!loading && videos.length > 0 && (
+          <section className="mt-6 mb-8 bg-[#121212] border border-gray-800/90 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="bg-[#FF9900] text-black text-xs font-black px-2.5 py-1 rounded-full">
+                  ▶ REELS
+                </span>
+                <h2 className="text-lg md:text-xl font-black text-white">
+                  HubReels
+                </h2>
+              </div>
+              <Link
+                href="/reels"
+                className="text-xs md:text-sm font-black text-[#FF9900] hover:underline"
+              >
+                Watch All Full Screen →
+              </Link>
+            </div>
+
+            <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+              {videos.slice(0, 12).map((v) => (
+                <Link
+                  key={`reel-card-${v.id}`}
+                  href={`/reels?start=${encodeURIComponent(v.id)}`}
+                  className="group relative w-36 sm:w-44 aspect-[9/16] shrink-0 rounded-2xl overflow-hidden bg-black border border-gray-800 hover:border-[#FF9900] transition snap-start shadow-lg"
+                >
+                  <img
+                    src={v.default_thumb.src}
+                    alt={v.title}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-transparent" />
+                  <span className="absolute top-2 left-2 bg-black/75 text-[#FF9900] text-[10px] font-black px-2 py-0.5 rounded-full border border-[#FF9900]/40">
+                    ▶ REEL
+                  </span>
+                  <div className="absolute bottom-2.5 left-2.5 right-2.5">
+                    <p className="text-white text-xs font-bold line-clamp-2 leading-snug drop-shadow">
+                      {v.title}
+                    </p>
+                    {v.views !== undefined && (
+                      <p className="text-[10px] text-gray-300 mt-1">👁 {v.views}</p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="mt-6">
           {loading ? (

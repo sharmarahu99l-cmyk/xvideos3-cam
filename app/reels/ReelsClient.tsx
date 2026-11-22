@@ -82,6 +82,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [videos, setVideos] = useState<ReelVideo[]>(initialVideos.filter(validThumb));
   const [activeCategory, setActiveCategory] = useState<string>('desi');
   const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [interactPlayer, setInteractPlayer] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(initialVideos.length === 0);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
@@ -92,7 +94,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const itemRefs = useRef<Array<HTMLElement | null>>([]);
   const loadingMoreRef = useRef<boolean>(false);
 
-  // Load saved likes from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LIKES_KEY);
@@ -100,7 +101,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     } catch {}
   }, []);
 
-  // Load initial videos on client if SSR returned empty
   useEffect(() => {
     if (videos.length === 0) {
       setLoading(true);
@@ -111,7 +111,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   }, [activeCategory, videos.length]);
 
-  // Track which reel is currently snapped into view
+  // Auto-start when scrolling to a new reel
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -122,14 +122,20 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
           if (entry.isIntersecting) {
             const idx = Number((entry.target as HTMLElement).dataset.index);
             if (!Number.isNaN(idx)) {
-              setActiveIndex(idx);
+              setActiveIndex((prev) => {
+                if (prev !== idx) {
+                  setIsPaused(false);
+                  setInteractPlayer(false);
+                }
+                return idx;
+              });
             }
           }
         }
       },
       {
         root: container,
-        threshold: 0.65,
+        threshold: 0.7,
       }
     );
 
@@ -140,7 +146,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
-  // Infinite scroll: auto-load next batch when within 3 reels of the end
+  // Infinite scroll
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -175,7 +181,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     [videos.length]
   );
 
-  // Desktop keyboard Up/Down arrow navigation
+  // Desktop keyboard Up/Down + Space to pause/play
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
@@ -184,6 +190,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         scrollToReel(activeIndex - 1);
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        setIsPaused((prev) => !prev);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -195,6 +204,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setActiveCategory(query);
     setLoading(true);
     setActiveIndex(0);
+    setIsPaused(false);
+    setInteractPlayer(false);
     setPage(1);
     const batch = await fetchReelBatch(query, 1);
     setVideos(batch);
@@ -215,7 +226,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   };
 
   const handleShare = async (video: ReelVideo) => {
-    const url = `${window.location.origin}/watch/${video.id}`;
+    const url = `${window.location.origin}/reels?start=${encodeURIComponent(video.id)}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: video.title, url });
@@ -224,7 +235,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     try {
       await navigator.clipboard.writeText(url);
-      setToast('Link copied!');
+      setToast('Reel link copied!');
       setTimeout(() => setToast(''), 2000);
     } catch {}
   };
@@ -232,17 +243,17 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
       {/* Top Floating Header + Category Switcher */}
-      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/60 to-transparent pt-3 pb-5 px-3 pointer-events-none">
-        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2 pointer-events-auto">
+      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/85 via-black/45 to-transparent pt-3 pb-6 px-3 pointer-events-none">
+        <div className="max-w-lg mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
             href="/"
-            className="flex items-center gap-1.5 bg-black/70 hover:bg-[#FF9900] hover:text-black text-white px-3.5 py-1.5 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
+            className="flex items-center gap-1.5 bg-black/60 hover:bg-[#FF9900] hover:text-black text-white px-3.5 py-1.5 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
           >
             <span>←</span>
             <span>HOME</span>
           </Link>
 
-          <div className="flex items-center gap-1 text-lg font-black tracking-tight">
+          <div className="flex items-center gap-0.5 text-lg font-black tracking-tight drop-shadow">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
             <span className="text-[#FF9900]">REELS</span>
@@ -250,14 +261,14 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           <Link
             href="/history"
-            className="bg-black/70 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1.5 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
+            className="bg-black/60 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1.5 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
           >
             🕒 History
           </Link>
         </div>
 
         {/* Horizontal Category Pills */}
-        <div className="max-w-2xl mx-auto mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar pointer-events-auto pb-1">
+        <div className="max-w-lg mx-auto mt-3 flex items-center gap-2 overflow-x-auto pointer-events-auto pb-1">
           {REEL_CATEGORIES.map((cat) => (
             <button
               key={cat.query}
@@ -266,7 +277,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               className={`px-3.5 py-1 rounded-full text-xs font-bold shrink-0 backdrop-blur-md transition border cursor-pointer ${
                 activeCategory === cat.query
                   ? 'bg-[#FF9900] text-black border-[#FF9900]'
-                  : 'bg-black/60 text-gray-200 border-white/15 hover:border-[#FF9900]'
+                  : 'bg-black/55 text-gray-200 border-white/15 hover:border-[#FF9900]'
               }`}
             >
               {cat.label}
@@ -275,14 +286,14 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         </div>
       </header>
 
-      {/* Copy Toast */}
+      {/* Toast */}
       {toast && (
         <div className="fixed top-28 left-1/2 -translate-x-1/2 z-50 bg-[#FF9900] text-black text-xs font-black px-4 py-2 rounded-full shadow-xl">
           {toast}
         </div>
       )}
 
-      {/* Vertical Snap-Scrolling Reels Feed */}
+      {/* Full-Screen Vertical Snap-Scrolling Feed */}
       {loading ? (
         <div className="h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-black">
           <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
@@ -291,10 +302,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       ) : (
         <div
           ref={feedRef}
-          className="h-[100dvh] w-full overflow-y-scroll snap-y snap-mandatory scroll-smooth"
+          className="h-[100dvh] w-full overflow-y-scroll snap-y snap-mandatory"
         >
           {videos.map((v, idx) => {
             const isActive = idx === activeIndex;
+            const isPlaying = isActive && !isPaused;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
 
@@ -307,159 +319,184 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 }}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
               >
-                {/* Ambient Blurred Backdrop */}
-                <img
-                  src={v.default_thumb.src}
-                  alt=""
-                  aria-hidden="true"
-                  className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-35 pointer-events-none"
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/20 to-black/90 pointer-events-none" />
+                {/* Full-Screen Reel Frame (Full width on mobile, 9:16 phone column on desktop) */}
+                <div className="relative h-[100dvh] w-full sm:max-w-[460px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                  {/* Base Full-Bleed Thumbnail (always ready when paused or scrolling) */}
+                  <img
+                    src={v.default_thumb.src}
+                    alt={v.title}
+                    loading={idx <= 1 ? 'eager' : 'lazy'}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
 
-                {/* Centered Clean Video Container (Generous Swipe Space Above & Below) */}
-                <div className="relative z-10 w-full max-w-[540px] px-0 sm:px-3">
-                  <div className="relative w-full aspect-video bg-black sm:rounded-2xl overflow-hidden border-y sm:border border-white/15 shadow-2xl">
-                    {isActive ? (
-                      <>
-                        <iframe
-                          key={`reel-frame-${v.id}`}
-                          src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/`}
-                          className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
-                          allow="autoplay; fullscreen"
-                          allowFullScreen
-                        />
-                        {/* Masks "Hosted by EPORNER COM" on bottom control bar */}
-                        <div
-                          aria-hidden="true"
-                          className="absolute bottom-0 left-1/2 -translate-x-1/2 h-11 min-w-[180px] sm:min-w-[220px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
-                        >
-                          <span className="text-xs sm:text-sm font-black text-[#FF9900]">H</span>
-                          <span className="text-xs sm:text-sm font-black text-white">UB</span>
-                          <span className="text-xs sm:text-sm font-black text-[#FF9900]">REELS</span>
+                  {/* Full-Screen Scaled Video Layer (fills 100% height edge-to-edge, hides player bars) */}
+                  {isPlaying && (
+                    <div className="absolute inset-0 overflow-hidden flex items-center justify-center bg-black">
+                      <iframe
+                        key={`reel-frame-${v.id}`}
+                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1`}
+                        className="w-[195dvh] h-[112dvh] max-w-none border-0 shrink-0"
+                        allow="autoplay; fullscreen"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+
+                  {/* Top & Bottom Instagram-style Gradient Vignettes */}
+                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-10" />
+                  <div className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-10" />
+
+                  {/* Full-Screen Tap-to-Pause/Play & Smooth Swipe Overlay */}
+                  {!interactPlayer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isActive) setIsPaused((prev) => !prev);
+                      }}
+                      aria-label={isPaused ? 'Play reel' : 'Pause reel'}
+                      className="absolute inset-0 z-20 flex items-center justify-center bg-transparent cursor-pointer focus:outline-none"
+                    >
+                      {isActive && isPaused && (
+                        <div className="w-20 h-20 rounded-full bg-black/65 border-2 border-[#FF9900] text-[#FF9900] flex items-center justify-center backdrop-blur-md shadow-2xl">
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 ml-1">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
                         </div>
-                      </>
-                    ) : (
-                      <div className="relative w-full h-full">
-                        <img
-                          src={v.default_thumb.src}
-                          alt={v.title}
-                          loading="lazy"
-                          className="w-full h-full object-cover opacity-85"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-16 h-16 rounded-full bg-[#FF9900]/90 text-black flex items-center justify-center shadow-2xl">
-                            <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </div>
-                        </div>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Right-Side Action Rail */}
+                  <div className="absolute right-3 bottom-24 z-30 flex flex-col items-center gap-4">
+                    {/* Like */}
+                    <button
+                      type="button"
+                      onClick={() => toggleLike(v.id)}
+                      aria-label="Like reel"
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                          isLiked
+                            ? 'bg-red-500 border-red-400 text-white scale-110'
+                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                        </svg>
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right-Side Instagram-Style Action Rail */}
-                <div className="absolute right-3 bottom-24 z-30 flex flex-col items-center gap-4">
-                  {/* Like */}
-                  <button
-                    type="button"
-                    onClick={() => toggleLike(v.id)}
-                    aria-label="Like video"
-                    className="flex flex-col items-center gap-1 cursor-pointer group"
-                  >
-                    <div
-                      className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
-                        isLiked
-                          ? 'bg-red-500 border-red-400 text-white scale-110'
-                          : 'bg-black/65 border-white/15 text-white group-hover:border-[#FF9900]'
-                      }`}
-                    >
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                      </svg>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-200">
-                      {isLiked ? 'Liked' : 'Like'}
-                    </span>
-                  </button>
-
-                  {/* Full Page Watch */}
-                  <Link
-                    href={`/watch/${v.id}`}
-                    className="flex flex-col items-center gap-1 group"
-                  >
-                    <div className="w-11 h-11 rounded-full bg-black/65 border border-white/15 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                      </svg>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-200">Full</span>
-                  </Link>
-
-                  {/* Share */}
-                  <button
-                    type="button"
-                    onClick={() => handleShare(v)}
-                    aria-label="Share video"
-                    className="flex flex-col items-center gap-1 cursor-pointer group"
-                  >
-                    <div className="w-11 h-11 rounded-full bg-black/65 border border-white/15 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                        <circle cx="18" cy="5" r="3" />
-                        <circle cx="6" cy="12" r="3" />
-                        <circle cx="18" cy="19" r="3" />
-                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                      </svg>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-200">Share</span>
-                  </button>
-
-                  {/* Quick Prev / Next Reel Controls */}
-                  <div className="flex flex-col gap-2 pt-2 border-t border-white/15">
-                    <button
-                      type="button"
-                      onClick={() => scrollToReel(idx - 1)}
-                      disabled={idx === 0}
-                      aria-label="Previous reel"
-                      className="w-10 h-10 rounded-full bg-black/70 hover:bg-[#FF9900] hover:text-black border border-white/20 flex items-center justify-center disabled:opacity-30 transition cursor-pointer"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => scrollToReel(idx + 1)}
-                      aria-label="Next reel"
-                      className="w-10 h-10 rounded-full bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black flex items-center justify-center shadow-lg transition cursor-pointer"
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </div>
-
-                {/* Bottom-Left Video Info Overlay */}
-                <div className="absolute bottom-5 left-4 right-20 z-20 max-w-xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
-                      REEL #{idx + 1}
-                    </span>
-                    <span className="bg-black/75 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
-                      ⏱ {duration}
-                    </span>
-                    {v.views !== undefined && (
-                      <span className="text-xs text-gray-300 font-semibold">
-                        👁 {v.views}
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {isLiked ? 'Liked' : 'Like'}
                       </span>
-                    )}
+                    </button>
+
+                    {/* Toggle Direct Player Controls (Sound / Seek) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPaused(false);
+                        setInteractPlayer((prev) => !prev);
+                      }}
+                      aria-label="Toggle video controls"
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                          interactPlayer
+                            ? 'bg-[#FF9900] border-[#FF9900] text-black'
+                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {interactPlayer ? 'Swipe' : 'Sound'}
+                      </span>
+                    </button>
+
+                    {/* Open Full Watch Page */}
+                    <Link
+                      href={`/watch/${v.id}`}
+                      className="flex flex-col items-center gap-1 group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/60 border border-white/20 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">Full</span>
+                    </Link>
+
+                    {/* Share */}
+                    <button
+                      type="button"
+                      onClick={() => handleShare(v)}
+                      aria-label="Share reel"
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/60 border border-white/20 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <circle cx="18" cy="5" r="3" />
+                          <circle cx="6" cy="12" r="3" />
+                          <circle cx="18" cy="19" r="3" />
+                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">Share</span>
+                    </button>
+
+                    {/* Prev / Next Reel Buttons */}
+                    <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
+                      <button
+                        type="button"
+                        onClick={() => scrollToReel(idx - 1)}
+                        disabled={idx === 0}
+                        aria-label="Previous reel"
+                        className="w-9 h-9 rounded-full bg-black/70 hover:bg-[#FF9900] hover:text-black border border-white/20 flex items-center justify-center disabled:opacity-30 transition cursor-pointer text-sm font-black"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => scrollToReel(idx + 1)}
+                        aria-label="Next reel"
+                        className="w-9 h-9 rounded-full bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black flex items-center justify-center shadow-lg transition cursor-pointer text-sm"
+                      >
+                        ↓
+                      </button>
+                    </div>
                   </div>
 
-                  <h2 className="text-white text-sm sm:text-base font-bold line-clamp-2 drop-shadow-md leading-snug">
-                    {v.title}
-                  </h2>
+                  {/* Bottom-Left Reel Info */}
+                  <div className="absolute bottom-6 left-4 right-20 z-30 pointer-events-none">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
+                        HUBREELS
+                      </span>
+                      <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
+                        ⏱ {duration}
+                      </span>
+                      {v.views !== undefined && (
+                        <span className="text-xs text-gray-200 font-semibold drop-shadow">
+                          👁 {v.views}
+                        </span>
+                      )}
+                    </div>
 
-                  <p className="text-[11px] text-gray-400 mt-1.5">
-                    Swipe up or tap ↓ for next reel
-                  </p>
+                    <h2 className="text-white text-sm sm:text-base font-bold line-clamp-2 drop-shadow-md leading-snug">
+                      {v.title}
+                    </h2>
+
+                    <p className="text-[11px] text-gray-300 mt-1 drop-shadow">
+                      {isPaused ? 'Paused • Tap anywhere to play' : 'Tap to pause • Swipe up for next'}
+                    </p>
+                  </div>
                 </div>
               </section>
             );
