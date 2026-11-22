@@ -34,10 +34,11 @@ const FALLBACK_TOPICS = [
   'desi homemade',
   'pakistani mms',
   'hindi audio',
-  '4k hd',
-  'milf',
-  'asian',
-  'amateur',
+  'desi viral',
+  'indian wife',
+  'punjabi desi',
+  'desi couple',
+  'desi college girl',
 ];
 
 const SEO_DESI_HUB_LINKS = [
@@ -91,6 +92,18 @@ const INSTANT_PORNSTARS = [
   "Anissa Kate", "Johnny Sins", "Chanel Preston", "Alura Jenson", "Reagan Foxx",
   "Eliza Ibarra", "Ariella Ferrera", "Mick Blue",
 ];
+
+function scrollToPageTop() {
+  if (typeof window === 'undefined') return;
+  window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
+function hasValidThumbnail(v: Video): boolean {
+  const src = v?.default_thumb?.src?.trim() || '';
+  return Boolean(v?.id && v?.title && src.startsWith('http'));
+}
 
 function getInstantLocalHints(query: string): SearchHint[] {
   const lowerQ = query.trim().toLowerCase();
@@ -151,24 +164,13 @@ async function fetchVideos(
     );
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) return data as Video[];
+      if (Array.isArray(data)) {
+        return (data as Video[]).filter(hasValidThumbnail);
+      }
     }
   } catch {
-    // Fallback to direct Eporner endpoint below
+    // Return empty array on network error
   }
-
-  try {
-    const directRes = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&format=json`
-    );
-    if (directRes.ok) {
-      const directData = await directRes.json();
-      if (Array.isArray(directData.videos)) return directData.videos as Video[];
-    }
-  } catch {
-    // Return empty array if both fail
-  }
-
   return [];
 }
 
@@ -190,10 +192,11 @@ export default function HomeClient({
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
 
+  const validInitial = initialVideos.filter(hasValidThumbnail);
   const hasSSRMatch =
-    initialVideos.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
+    validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
-  const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? initialVideos : []);
+  const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? validInitial : []);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
   const [forYouVideos, setForYouVideos] = useState<Video[]>([]);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
@@ -215,10 +218,12 @@ export default function HomeClient({
     let active = true;
 
     const run = async () => {
+      scrollToPageTop();
       setSearchQuery(urlQuery);
       setPage(urlPage);
       setLoadedExtraPages(0);
-      window.scrollTo(0, 0);
+      setSimilarVideos([]);
+      setForYouVideos([]);
 
       if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
@@ -229,12 +234,15 @@ export default function HomeClient({
         document.title = 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3';
       }
 
-      const prefs = getTopPreferences(3);
-      const prefQuery = prefs[0] || FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
-      setRecentHistory(getWatchHistory(5));
+      // Rotate topic + page offset on every page change so Picked For You & Similar Videos always refresh
+      const prefs = getTopPreferences(5);
+      const topicPool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
+      const prefQuery = topicPool[(urlPage - 1) % topicPool.length];
+      const similarQuery = FALLBACK_TOPICS[(urlPage + 2) % FALLBACK_TOPICS.length];
+      setRecentHistory(getWatchHistory(5).filter(hasValidThumbnail));
 
       const usingSSRMain =
-        initialVideos.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
+        validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
       if (!usingSSRMain) {
         setLoading(true);
@@ -242,10 +250,10 @@ export default function HomeClient({
 
       const [fetchedMain, similar, personalized] = await Promise.all([
         usingSSRMain
-          ? Promise.resolve(initialVideos)
+          ? Promise.resolve(validInitial)
           : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
-        fetchVideos(urlQuery || 'desi bhabhi', urlPage + 2, 15, 'top-rated'),
-        fetchVideos(prefQuery, (urlPage % 10) + 1, 15, 'latest'),
+        fetchVideos(urlQuery || similarQuery, urlPage + 3, 18, 'top-rated'),
+        fetchVideos(prefQuery, urlPage + 5, 18, 'latest'),
       ]);
 
       let fetched = fetchedMain;
@@ -259,7 +267,7 @@ export default function HomeClient({
       const seenIds = new Set<string>();
       const uniqueMain: Video[] = [];
       for (const v of fetched) {
-        if (v.id && !seenIds.has(v.id)) {
+        if (hasValidThumbnail(v) && !seenIds.has(v.id)) {
           seenIds.add(v.id);
           uniqueMain.push(v);
         }
@@ -267,7 +275,7 @@ export default function HomeClient({
 
       const uniqueSimilar: Video[] = [];
       for (const v of similar) {
-        if (v.id && !seenIds.has(v.id)) {
+        if (hasValidThumbnail(v) && !seenIds.has(v.id)) {
           seenIds.add(v.id);
           uniqueSimilar.push(v);
         }
@@ -275,7 +283,7 @@ export default function HomeClient({
 
       const uniqueForYou: Video[] = [];
       for (const v of personalized) {
-        if (v.id && !seenIds.has(v.id)) {
+        if (hasValidThumbnail(v) && !seenIds.has(v.id)) {
           seenIds.add(v.id);
           uniqueForYou.push(v);
         }
@@ -291,7 +299,7 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, [urlQuery, urlPage, initialVideos, initialQuery, initialPage]);
+  }, [urlQuery, urlPage, initialQuery, initialPage]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -340,6 +348,7 @@ export default function HomeClient({
   const navigateToSearch = (term: string, targetPage: number = 1) => {
     setShowHints(false);
     setShowMenu(false);
+    scrollToPageTop();
     const safePage = Math.min(MAX_PAGES, Math.max(1, targetPage));
     const params = new URLSearchParams();
     if (term.trim()) params.set('q', term.trim());
@@ -400,7 +409,7 @@ export default function HomeClient({
     const more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
 
     const existingIds = new Set(videos.map((v) => v.id));
-    let uniqueNew = more.filter((v) => v.id && !existingIds.has(v.id));
+    let uniqueNew = more.filter((v) => hasValidThumbnail(v) && !existingIds.has(v.id));
 
     if (uniqueNew.length < 10) {
       const prefs = getTopPreferences(5);
@@ -409,7 +418,7 @@ export default function HomeClient({
       const extraBatch = await fetchVideos(fallbackTopic, (nextStep % 20) + 1, PER_PAGE, 'latest');
       uniqueNew = [
         ...uniqueNew,
-        ...extraBatch.filter((v) => v.id && !existingIds.has(v.id)),
+        ...extraBatch.filter((v) => hasValidThumbnail(v) && !existingIds.has(v.id)),
       ];
     }
 
@@ -503,14 +512,13 @@ export default function HomeClient({
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
       <header className="bg-[#111] sticky top-0 z-50 p-3 border-b border-gray-800">
         <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto">
-          <Link href="/" className="flex items-center gap-0.5 shrink-0">
+          <Link href="/" onClick={scrollToPageTop} className="flex items-center gap-0.5 shrink-0">
             <span className="text-3xl md:text-4xl font-black text-[#FF9900]">H</span>
             <span className="text-3xl md:text-4xl font-black text-white">UB</span>
             <span className="text-3xl md:text-4xl font-black text-[#FF9900]">T</span>
             <span className="text-3xl md:text-4xl font-black text-white">UBE</span>
           </Link>
 
-          {/* Search Bar: Hints ONLY appear when user types */}
           <div ref={searchWrapRef} className="relative flex-1 max-w-xl mx-2">
             <form onSubmit={handleSearch} className="relative flex items-center">
               <input
@@ -662,7 +670,6 @@ export default function HomeClient({
 
         <JuicyBanner />
 
-        {/* Top Page Numbers Bar (Always Visible) */}
         {renderPaginationBar()}
 
         {loading ? (
@@ -685,7 +692,6 @@ export default function HomeClient({
           </div>
         )}
 
-        {/* Load More + Bottom Page Numbers Bar (Always Visible) */}
         <div className="mt-10 space-y-4">
           {videos.length > 0 && (
             <div className="flex justify-center">
@@ -704,7 +710,6 @@ export default function HomeClient({
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Personalized Recommendations Based on User Preferences */}
         {!loading && forYouVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
             <div className="flex items-center justify-between mb-6">
@@ -728,7 +733,6 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Similar Videos You May Also Like */}
         {!loading && similarVideos.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
             <div className="flex items-center justify-between mb-6">
@@ -752,7 +756,6 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Recently Watched */}
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
             <h2 className="text-2xl font-black text-[#FF9900] mb-6">
@@ -768,7 +771,6 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Crawlable Desi & Viral Video Keyword Hub for Google SEO */}
         <footer className="mt-16 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories
