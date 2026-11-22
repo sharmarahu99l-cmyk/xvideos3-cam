@@ -656,6 +656,7 @@ export default function WatchClient({
             )}
           </div>
         )}
+<JuicyBanner adzone={1133788} width={308} height={286} />
 
         {/* Similar Videos Matched Specifically to This Video */}
         <div id="similar-videos-section" className="mt-10">

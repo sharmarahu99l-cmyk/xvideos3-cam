@@ -671,6 +671,7 @@ export default function HomeClient() {
 
           {renderPaginationBar()}
         </div>
+<JuicyBanner adzone={1133788} width={308} height={286} />
 
         {/* Personalized Recommendations Based on User Preferences */}
         {!loading && forYouVideos.length > 0 && (
