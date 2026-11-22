@@ -16,6 +16,7 @@ export type WatchVideo = {
   id: string;
   title: string;
   default_thumb: { src: string };
+  thumbs?: Array<{ src: string; width?: number; height?: number }>;
   length_min: number;
   length_sec: number;
   embed: string;
@@ -39,15 +40,27 @@ const STOP_WORDS = new Set([
 const FALLBACK_TOPICS = [
   'desi bhabhi',
   'indian aunty',
-  'milf',
-  'asian',
-  'amateur',
-  'big tits',
-  'latina',
-  'teen',
-  'pov',
-  'homemade',
+  'desi homemade',
+  'pakistani mms',
+  'hindi audio',
+  'desi viral',
+  'indian wife',
+  'punjabi desi',
+  'desi couple',
+  'desi college girl',
 ];
+
+function scrollToPageTop() {
+  if (typeof window === 'undefined') return;
+  window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
+function hasValidThumbnail(v: WatchVideo): boolean {
+  const src = v?.default_thumb?.src?.trim() || '';
+  return Boolean(v?.id && v?.title && src.startsWith('http'));
+}
 
 function hashString(str: string): number {
   let hash = 0;
@@ -148,6 +161,7 @@ export default function WatchClient({
   relatedRef.current = related;
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const [searchInput, setSearchInput] = useState<string>('');
@@ -156,6 +170,15 @@ export default function WatchClient({
   const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
+
+  // Stop & unload iframe immediately when navigating away or switching videos
+  useEffect(() => {
+    return () => {
+      if (iframeRef.current) {
+        iframeRef.current.src = 'about:blank';
+      }
+    };
+  }, [id]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -175,35 +198,32 @@ export default function WatchClient({
     }
   };
 
-  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 40): Promise<WatchVideo[]> => {
+  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 30, order = 'top-rated'): Promise<WatchVideo[]> => {
     try {
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=top-rated`,
-        { cache: 'no-store' }
+        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`
       );
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) return data as WatchVideo[];
-      }
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? (data as WatchVideo[]).filter(hasValidThumbnail) : [];
     } catch {
-      // Fallback below
+      return [];
     }
-
-    try {
-      const directRes = await fetch(
-        `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=top-rated&format=json`,
-        { cache: 'no-store' }
-      );
-      if (directRes.ok) {
-        const directData = await directRes.json();
-        if (Array.isArray(directData.videos)) return directData.videos as WatchVideo[];
-      }
-    } catch {
-      // Return empty array if both fail
-    }
-
-    return [];
   }, []);
+
+  const loadPickedForYou = useCallback(
+    async (pageOffset: number, excludeIds: Set<string>) => {
+      const prefs = getTopPreferences(5);
+      const pool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
+      const prefQuery = pool[(hashString(id) + pageOffset) % pool.length];
+      const apiPage = ((hashString(id) + pageOffset) % 12) + 1;
+
+      const list = await fetchBatch(prefQuery, apiPage, 20, 'latest');
+      const filtered = list.filter((item) => hasValidThumbnail(item) && !excludeIds.has(item.id));
+      setForYouVideos(filtered.slice(0, 10));
+    },
+    [id, fetchBatch]
+  );
 
   const loadSimilarVideos = useCallback(
     async (targetVideo: WatchVideo | null, pageNum: number, append: boolean) => {
@@ -215,32 +235,34 @@ export default function WatchClient({
 
       if (!append && pageNum === 1) {
         const savedSnapshot = getVideoRelatedSnapshot(id);
-        if (savedSnapshot && savedSnapshot.length > 0) {
-          setRelated(savedSnapshot);
+        const validSnapshot = savedSnapshot?.filter(hasValidThumbnail) || [];
+        if (validSnapshot.length > 0) {
+          setRelated(validSnapshot);
           setMoreVideos([]);
           setExtraPages(0);
           setLoadingRelated(false);
+          loadPickedForYou(1, new Set([id, ...validSnapshot.map((v) => v.id)]));
           return;
         }
       }
 
       const query = extractUniqueRelatedQuery(targetVideo, id);
-      const idOffset = (hashString(id) % 8) + 1;
+      const idOffset = (hashString(id) % 6) + 1;
       const effectiveApiPage = pageNum === 1 ? idOffset : idOffset + pageNum - 1;
 
-      const fetched = await fetchBatch(query, effectiveApiPage, 40);
+      const fetched = await fetchBatch(query, effectiveApiPage, 30, 'top-rated');
       const previouslyShown = getGlobalShownIds();
 
-      const freshMatches = fetched.filter((v) => v.id && v.id !== id && !previouslyShown.has(v.id));
-      const olderMatches = fetched.filter((v) => v.id && v.id !== id && previouslyShown.has(v.id));
+      const freshMatches = fetched.filter((v) => v.id !== id && !previouslyShown.has(v.id));
+      const olderMatches = fetched.filter((v) => v.id !== id && previouslyShown.has(v.id));
       let combined = [...freshMatches, ...olderMatches];
 
       if (combined.length < 15) {
         const prefs = getTopPreferences(5);
         const pool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
         const fallbackQuery = pool[(hashString(id) + pageNum) % pool.length];
-        const fallbackBatch = await fetchBatch(fallbackQuery, (pageNum % 15) + 1, 30);
-        combined = [...combined, ...fallbackBatch.filter((v) => v.id && v.id !== id)];
+        const fallbackBatch = await fetchBatch(fallbackQuery, (pageNum % 15) + 1, 30, 'most_viewed');
+        combined = [...combined, ...fallbackBatch.filter((v) => v.id !== id)];
       }
 
       if (append) {
@@ -277,20 +299,22 @@ export default function WatchClient({
           saveVideoRelatedSnapshot(id, finalSlice);
           addGlobalShownIds(finalSlice.map((v) => v.id));
         }
+        loadPickedForYou(pageNum, new Set([id, ...finalSlice.map((v) => v.id)]));
       }
 
       setLoadingRelated(false);
       setLoadingMore(false);
     },
-    [id, fetchBatch]
+    [id, fetchBatch, loadPickedForYou]
   );
 
   useEffect(() => {
     let active = true;
-    window.scrollTo(0, 0);
+    scrollToPageTop();
     setRelatedPage(1);
     setMoreVideos([]);
     setExtraPages(0);
+    setForYouVideos([]);
 
     const handleLoadedVideo = (v: WatchVideo | null) => {
       if (!active) return;
@@ -302,13 +326,6 @@ export default function WatchClient({
         recordWatchedVideo(v);
       }
       loadSimilarVideos(v, 1, false);
-
-      const prefs = getTopPreferences(4);
-      const prefQuery = prefs[hashString(id) % Math.max(1, prefs.length)] || 'desi bhabhi';
-      fetchBatch(prefQuery, (hashString(id) % 10) + 1, 15).then((list) => {
-        if (!active) return;
-        setForYouVideos(list.filter((item) => item.id && item.id !== id).slice(0, 10));
-      });
     };
 
     const loadVideoMetadata = async () => {
@@ -327,12 +344,12 @@ export default function WatchClient({
           }
         }
       } catch {
-        // Fallback to direct Eporner video lookup below
+        // Fallback below
       }
 
       try {
         const directRes = await fetch(
-          `https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`
+          `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`
         );
         if (directRes.ok) {
           const directData: WatchVideo = await directRes.json();
@@ -353,7 +370,7 @@ export default function WatchClient({
     return () => {
       active = false;
     };
-  }, [id, initialVideo, loadSimilarVideos, fetchBatch]);
+  }, [id, initialVideo, loadSimilarVideos]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -381,7 +398,6 @@ export default function WatchClient({
       try {
         const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
           signal: controller.signal,
-          cache: 'no-store',
         });
         if (!res.ok) return;
         const data: { hints?: SearchHint[] } = await res.json();
@@ -395,6 +411,7 @@ export default function WatchClient({
   }, [searchInput, showHints]);
 
   const handleSidebarClick = (term: string) => {
+    scrollToPageTop();
     router.push(`/?q=${encodeURIComponent(term)}`);
     setShowMenu(false);
     setShowVideoSub(false);
@@ -402,6 +419,7 @@ export default function WatchClient({
 
   const goSearch = (term: string) => {
     setShowHints(false);
+    scrollToPageTop();
     if (term.trim()) {
       router.push(`/?q=${encodeURIComponent(term.trim())}`);
     }
@@ -436,10 +454,9 @@ export default function WatchClient({
 
   const handleRelatedPageChange = (newPage: number) => {
     const safePage = Math.max(1, newPage);
+    scrollToPageTop();
     setRelatedPage(safePage);
     loadSimilarVideos(video, safePage, false);
-    const el = document.getElementById('similar-videos-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
   const tagList = video?.keywords
@@ -448,7 +465,6 @@ export default function WatchClient({
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      {/* HEADER */}
       <header className="bg-[#111] px-4 py-3 border-b border-gray-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <button
@@ -459,7 +475,6 @@ export default function WatchClient({
             ☰
           </button>
 
-          {/* Search Bar: Hints ONLY appear when typing */}
           <div ref={searchWrapRef} className="relative flex-1 max-w-xl">
             <form onSubmit={handleSearch} className="relative flex items-center">
               <input
@@ -474,7 +489,7 @@ export default function WatchClient({
                   setShowHints(val.trim().length > 0);
                 }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search desi, bhabhi, pornstars, categories..."
+                placeholder="Search desi videos, desi mms, bhabhi, pornstars..."
                 autoComplete="off"
                 className="w-full bg-[#222] border-2 border-[#FF9900] text-white pl-5 pr-16 py-2.5 rounded-full outline-none placeholder-gray-400"
               />
@@ -526,7 +541,7 @@ export default function WatchClient({
             )}
           </div>
 
-          <Link href="/" className="text-2xl md:text-3xl font-black tracking-tighter shrink-0">
+          <Link href="/" onClick={scrollToPageTop} className="text-2xl md:text-3xl font-black tracking-tighter shrink-0">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
             <span className="text-[#FF9900]">T</span>
@@ -535,7 +550,6 @@ export default function WatchClient({
         </div>
       </header>
 
-      {/* SIDEBAR */}
       {showMenu && (
         <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
           <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
@@ -572,6 +586,7 @@ export default function WatchClient({
             </div>
           )}
           <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
+          <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
           <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
           <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
@@ -579,20 +594,21 @@ export default function WatchClient({
         </div>
       )}
 
-      {/* MAIN CONTENT */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div
+          key={`player-box-${id}`}
           ref={playerContainerRef}
           className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
         >
           <iframe
-            src={`https://www.eporner.com/embed/${id}/`}
+            key={`player-iframe-${id}`}
+            ref={iframeRef}
+            src={`https://www.eporner.com/embed/${encodeURIComponent(id)}/`}
             className="w-full h-full border-0"
             allow="autoplay; fullscreen"
             allowFullScreen
           />
 
-          {/* Top bar mask */}
           <div className="absolute top-0 left-0 right-0 h-14 bg-gradient-to-b from-black via-black/95 to-transparent flex items-center justify-between px-4 z-20 pointer-events-auto">
             <div className="flex items-center gap-0.5 text-lg font-black select-none">
               <span className="text-[#FF9900]">H</span>
@@ -612,7 +628,6 @@ export default function WatchClient({
             </button>
           </div>
 
-          {/* Bottom-right corner mask */}
           <div className="absolute bottom-11 right-3 bg-black/95 px-3 py-1 rounded-lg flex items-center gap-0.5 text-base font-black z-20 select-none">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
@@ -623,7 +638,6 @@ export default function WatchClient({
 
         <JuicyBanner />
 
-        {/* Real Unique Video Title & Description */}
         {video && (
           <div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
             <h1 className="text-white text-2xl md:text-3xl font-black mb-2 leading-snug">
@@ -647,6 +661,7 @@ export default function WatchClient({
                   <Link
                     key={tag}
                     href={`/?q=${encodeURIComponent(tag)}`}
+                    onClick={scrollToPageTop}
                     className="bg-[#222] hover:bg-[#FF9900] hover:text-black text-xs font-semibold px-3 py-1.5 rounded-full transition"
                   >
                     #{tag}
@@ -656,9 +671,9 @@ export default function WatchClient({
             )}
           </div>
         )}
-<JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Similar Videos Matched Specifically to This Video */}
+        <JuicyBanner adzone={1133788} width={308} height={286} />
+
         <div id="similar-videos-section" className="mt-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[#FF9900] text-2xl font-bold">
@@ -676,7 +691,7 @@ export default function WatchClient({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {related.map((v) => (
-                <Link key={v.id} href={`/watch/${v.id}`} className="block">
+                <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollToPageTop} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}
@@ -684,20 +699,18 @@ export default function WatchClient({
           )}
         </div>
 
-        {/* Loaded More Videos */}
         {moreVideos.length > 0 && (
           <div className="mt-8">
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {moreVideos.map((v) => (
-                <Link key={`more-${v.id}`} href={`/watch/${v.id}`} className="block">
+                <Link key={`more-${v.id}`} href={`/watch/${v.id}`} onClick={scrollToPageTop} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}
             </div>
           </div>
         )}
-<JuicyBanner adzone={1133788} width={308} height={286} />
-        {/* More Videos + Prev/Next Controls */}
+
         <div className="mt-10 flex flex-col items-center gap-6">
           <button
             onClick={handleLoadMore}
@@ -726,8 +739,7 @@ export default function WatchClient({
             </button>
           </div>
         </div>
-<JuicyBanner adzone={1133788} width={308} height={286} />
-        {/* Personalized Recommendations Based on User Preferences */}
+
         {forYouVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
             <h2 className="text-[#FF9900] text-2xl font-bold mb-6">
@@ -735,7 +747,7 @@ export default function WatchClient({
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {forYouVideos.map((v) => (
-                <Link key={`pref-${v.id}`} href={`/watch/${v.id}`} className="block">
+                <Link key={`pref-${v.id}`} href={`/watch/${v.id}`} onClick={scrollToPageTop} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}
