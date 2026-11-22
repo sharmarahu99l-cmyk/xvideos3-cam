@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
@@ -53,6 +54,7 @@ export default function WatchClient({
   const [searchInput, setSearchInput] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Immediately stop & blank out old video iframe when leaving or switching videos
   useEffect(() => {
     return () => {
       if (iframeRef.current) {
