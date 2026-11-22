@@ -19,6 +19,7 @@ interface PhThumb {
 
 interface PhRawVideo {
   video_id?: string;
+  url?: string;
   title?: string;
   default_thumb?: string;
   thumb?: string;
@@ -31,6 +32,7 @@ interface PhRawVideo {
 
 interface RtRawVideo {
   video_id?: string;
+  embed_url?: string;
   title?: string;
   default_thumb?: string;
   thumb?: string;
@@ -70,16 +72,26 @@ function parseDuration(duration?: string): { mins: number; secs: number } {
 }
 
 export function getEmbedUrlFromId(id: string): string {
-  if (id.startsWith('rt-')) {
-    return `https://embed.redtube.com/?id=${encodeURIComponent(id.slice(3))}`;
+  const decoded = decodeURIComponent(id || '').trim();
+  if (decoded.startsWith('rt-')) {
+    const rtId = decoded.slice(3);
+    return `https://embed.redtube.com/?id=${encodeURIComponent(rtId)}`;
   }
-  const cleanPhId = id.replace(/^ph-/, '');
+  const cleanPhId = decoded.replace(/^ph-/, '');
   return `https://www.pornhub.com/embed/${encodeURIComponent(cleanPhId)}`;
 }
 
+function extractPornhubViewkey(v: PhRawVideo): string {
+  if (v.url) {
+    const match = v.url.match(/[?&]viewkey=([a-zA-Z0-9]+)/);
+    if (match?.[1]) return match[1];
+  }
+  return String(v.video_id || '').trim();
+}
+
 export function normalizePornhubVideo(v: PhRawVideo): NormalizedVideo | null {
-  const rawId = String(v.video_id || '').trim();
-  if (!rawId) return null;
+  const viewkey = extractPornhubViewkey(v);
+  if (!viewkey) return null;
 
   const { mins, secs } = parseDuration(v.duration);
 
@@ -104,13 +116,13 @@ export function normalizePornhubVideo(v: PhRawVideo): NormalizedVideo | null {
     : '';
 
   return {
-    id: `ph-${rawId}`,
+    id: `ph-${viewkey}`,
     title: v.title || 'HD Video',
     default_thumb: { src: bestThumb },
     thumbs: mappedThumbs,
     length_min: mins,
     length_sec: secs,
-    embed: `https://www.pornhub.com/embed/${rawId}`,
+    embed: `https://www.pornhub.com/embed/${viewkey}`,
     views: v.views !== undefined ? String(v.views) : undefined,
     keywords,
     added: v.publish_date,
@@ -153,7 +165,7 @@ function normalizeRedtubeVideo(v: RtRawVideo): NormalizedVideo | null {
     thumbs: mappedThumbs,
     length_min: mins,
     length_sec: secs,
-    embed: `https://embed.redtube.com/?id=${rawId}`,
+    embed: v.embed_url || `https://embed.redtube.com/?id=${rawId}`,
     views: v.views !== undefined ? String(v.views) : undefined,
     keywords,
     added: v.publish_date,
@@ -242,12 +254,13 @@ export async function getPornhubVideoById(
   id: string,
   timeoutMs = 4500
 ): Promise<NormalizedVideo | null> {
+  const decoded = decodeURIComponent(id || '').trim();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    if (id.startsWith('rt-')) {
-      const rawRtId = id.slice(3);
+    if (decoded.startsWith('rt-')) {
+      const rawRtId = decoded.slice(3);
       const res = await fetch(
         `https://api.redtube.com/?data=redtube.Videos.getVideoById&video_id=${encodeURIComponent(rawRtId)}&output=json&thumbsize=big`,
         {
@@ -261,7 +274,7 @@ export async function getPornhubVideoById(
       return data.video ? normalizeRedtubeVideo(data.video) : null;
     }
 
-    const rawPhId = id.replace(/^ph-/, '');
+    const rawPhId = decoded.replace(/^ph-/, '');
     const res = await fetch(
       `https://www.pornhub.com/webmasters/video_by_id?id=${encodeURIComponent(rawPhId)}&thumbsize=large`,
       {
