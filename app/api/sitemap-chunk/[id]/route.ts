@@ -1,15 +1,6 @@
 import { NextResponse } from 'next/server';
+import { searchPornhubVideos, getEmbedUrlFromId } from '../../../lib/pornhub';
 
-interface EpornerVideo {
-  id?: string;
-  title?: string;
-  default_thumb?: { src?: string };
-  length_min?: number;
-  length_sec?: number;
-  added?: string;
-}
-
-// High-priority Desi & viral search terms indexed first across shards 0-299
 const DESI_PRIORITY_TOPICS = [
   'desi', 'desi videos', 'desi porn', 'desi mms', 'viral desi', 'new desi',
   'desi bhabhi', 'indian bhabhi', 'desi aunty', 'indian aunty', 'desi sex',
@@ -21,7 +12,6 @@ const DESI_PRIORITY_TOPICS = [
   'desi hidden cam', 'desi suhag raat', 'indian wife', 'indian viral', 'desi hardcore',
 ];
 
-// Full Eporner catalog topics across shards 300-999
 const GLOBAL_CATALOG_TOPICS = [
   'japanese', 'anal', '1080p', 'teen', 'vr', 'asian', 'big tits', 'shemale',
   'milf', 'gay', 'ebony', 'homemade', 'interracial', 'amateur', 'lesbian',
@@ -59,7 +49,7 @@ export async function GET(
   if (shardId < 300) {
     topic = DESI_PRIORITY_TOPICS[shardId % DESI_PRIORITY_TOPICS.length];
     apiPage = Math.floor(shardId / DESI_PRIORITY_TOPICS.length) + 1;
-    order = shardId % 2 === 0 ? 'latest' : 'most-popular';
+    order = shardId % 2 === 0 ? 'latest' : 'most_viewed';
   } else {
     const globalIdx = shardId - 300;
     topic = GLOBAL_CATALOG_TOPICS[globalIdx % GLOBAL_CATALOG_TOPICS.length];
@@ -69,7 +59,6 @@ export async function GET(
 
   const urlBlocks: string[] = [];
 
-  // Shard 0 includes all primary Desi & site landing pages for instant Google crawling
   if (shardId === 0) {
     const coreLandingPaths = [
       '/',
@@ -87,32 +76,18 @@ export async function GET(
     }
   }
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(topic)}&per_page=100&page=${apiPage}&order=${order}&format=json`,
-      {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
-      }
+  const videos = await searchPornhubVideos(topic, apiPage, order);
+
+  for (const v of videos) {
+    if (!v.id || !v.title) continue;
+    const durationSec = (v.length_min || 0) * 60 + (v.length_sec || 0);
+    const safeTitle = escapeXml(v.title.trim().slice(0, 100));
+    const safeDesc = escapeXml(
+      `Watch ${v.title.trim()} full HD Desi & adult video free on HubTube (XVideos3.cam).`
     );
-    clearTimeout(timer);
+    const thumb = v.default_thumb?.src ? escapeXml(v.default_thumb.src) : '';
 
-    if (res.ok) {
-      const data: { videos?: EpornerVideo[] } = await res.json();
-      const videos = Array.isArray(data.videos) ? data.videos : [];
-
-      for (const v of videos) {
-        if (!v.id || !v.title) continue;
-        const durationSec = (v.length_min || 0) * 60 + (v.length_sec || 0);
-        const safeTitle = escapeXml(v.title.trim().slice(0, 100));
-        const safeDesc = escapeXml(
-          `Watch ${v.title.trim()} full HD Desi & adult video free on HubTube (XVideos3.cam).`
-        );
-        const thumb = v.default_thumb?.src ? escapeXml(v.default_thumb.src) : '';
-
-        urlBlocks.push(`  <url>
+    urlBlocks.push(`  <url>
     <loc>${escapeXml(`${baseUrl}/watch/${v.id}`)}</loc>
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
@@ -123,17 +98,13 @@ export async function GET(
       <video:thumbnail_loc>${thumb}</video:thumbnail_loc>
       <video:title>${safeTitle}</video:title>
       <video:description>${safeDesc}</video:description>
-      <video:player_loc>${escapeXml(`https://www.eporner.com/embed/${v.id}/`)}</video:player_loc>
+      <video:player_loc>${escapeXml(v.embed || getEmbedUrlFromId(v.id))}</video:player_loc>
       <video:duration>${durationSec}</video:duration>
       <video:family_friendly>no</video:family_friendly>
     </video:video>`
         : ''
     }
   </url>`);
-      }
-    }
-  } catch {
-    // Return collected URLs cleanly without breaking XML
   }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
