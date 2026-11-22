@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 import GlobalUI from "./GlobalUI";
+import JuicyPopunder from "./JuicyPopunder";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://xvideos3.cam"),
@@ -69,16 +69,7 @@ export default function RootLayout({
       <body className="bg-[#0a0a0a] text-[#ddd]">
         {children}
         <GlobalUI />
-
-        {/* JuicyAds v3.2P Popunder */}
-        <Script id="juicyads-popunder-vars" strategy="afterInteractive">
-          {`var juicy_tags = ['a', 'img'];`}
-        </Script>
-        <Script
-          id="juicyads-popunder-script"
-          src="https://js.juicyads.com/jp.php?c=4474z2y2s224u4r2p2e4438444&u=https%3A%2F%2Fwww.juicyads.rocks"
-          strategy="afterInteractive"
-        />
+        <JuicyPopunder />
       </body>
     </html>
   );
