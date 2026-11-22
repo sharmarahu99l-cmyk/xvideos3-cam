@@ -145,7 +145,7 @@ async function fetchVideos(
   query: string,
   pageNum: number = 1,
   perPage: number = PER_PAGE,
-  order: string = 'most_viewed'
+  order: string = 'most-popular'
 ): Promise<Video[]> {
   const searchTerm = query.trim() || 'desi';
   try {
@@ -162,7 +162,7 @@ async function fetchVideos(
 
   try {
     const direct = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&thumbsize=big&format=json`
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`
     );
     if (direct.ok) {
       const data = await direct.json();
@@ -196,6 +196,7 @@ export default function HomeClient({
     validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
   const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? validInitial : []);
+  const [trendingReels, setTrendingReels] = useState<Video[]>([]);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
   const [similarTopics, setSimilarTopics] = useState<string[]>([]);
   const [activeSimTopic, setActiveSimTopic] = useState<string>('ALL');
@@ -212,6 +213,40 @@ export default function HomeClient({
   const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
+
+  // Always load Trending Desi Videos for the Homepage Reels strip
+  useEffect(() => {
+    let active = true;
+    const loadTrendingDesiReels = async () => {
+      const [weekly, popular] = await Promise.all([
+        fetchVideos('desi', 1, 12, 'top-weekly'),
+        fetchVideos('desi', 1, 12, 'most-popular'),
+      ]);
+      if (!active) return;
+
+      const seen = new Set<string>();
+      const merged: Video[] = [];
+      for (const v of [...weekly, ...popular]) {
+        if (validThumb(v) && !seen.has(v.id)) {
+          seen.add(v.id);
+          merged.push(v);
+        }
+      }
+
+      merged.sort((a, b) => {
+        const va = Number(String(a.views ?? 0).replace(/[^0-9]/g, '')) || 0;
+        const vb = Number(String(b.views ?? 0).replace(/[^0-9]/g, '')) || 0;
+        return vb - va;
+      });
+
+      setTrendingReels(merged.slice(0, 12));
+    };
+
+    loadTrendingDesiReels();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -260,9 +295,9 @@ export default function HomeClient({
       const [fetchedMain, ...simBatches] = await Promise.all([
         usingSSRMain
           ? Promise.resolve(validInitial)
-          : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
+          : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most-popular'),
         ...simQueries.map((q, idx) =>
-          fetchVideos(q, urlPage + 2, 16, idx === 0 ? 'top-rated' : 'most_viewed')
+          fetchVideos(q, urlPage + 2, 16, idx === 0 ? 'top-rated' : 'most-popular')
         ),
       ]);
 
@@ -421,6 +456,7 @@ export default function HomeClient({
   };
 
   const pageWindow = getPageWindow(page, MAX_PAGES);
+  const reelStripVideos = trendingReels.length > 0 ? trendingReels : videos.slice(0, 12);
 
   const renderPaginationBar = () => (
     <nav
@@ -664,8 +700,8 @@ export default function HomeClient({
         {/* Top Banner Ad */}
         <JuicyBanner />
 
-        {/* Homepage HubReels Shelf (Vertical 9:16 Reels Strip) */}
-        {!loading && videos.length > 0 && (
+        {/* Homepage Trending Desi Reels Shelf */}
+        {reelStripVideos.length > 0 && (
           <section className="mt-6 mb-8 bg-[#121212] border border-gray-800/90 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -673,7 +709,7 @@ export default function HomeClient({
                   ▶ REELS
                 </span>
                 <h2 className="text-lg md:text-xl font-black text-white">
-                  HubReels
+                  Trending Desi Reels
                 </h2>
               </div>
               <Link
@@ -685,7 +721,7 @@ export default function HomeClient({
             </div>
 
             <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
-              {videos.slice(0, 12).map((v) => (
+              {reelStripVideos.map((v) => (
                 <Link
                   key={`reel-card-${v.id}`}
                   href={`/reels?start=${encodeURIComponent(v.id)}`}
@@ -699,7 +735,7 @@ export default function HomeClient({
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-transparent" />
                   <span className="absolute top-2 left-2 bg-black/75 text-[#FF9900] text-[10px] font-black px-2 py-0.5 rounded-full border border-[#FF9900]/40">
-                    ▶ REEL
+                    🔥 DESI REEL
                   </span>
                   <div className="absolute bottom-2.5 left-2.5 right-2.5">
                     <p className="text-white text-xs font-bold line-clamp-2 leading-snug drop-shadow">

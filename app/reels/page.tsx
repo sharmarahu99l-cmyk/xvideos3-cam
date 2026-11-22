@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import ReelsClient, { type ReelVideo } from './ReelsClient';
 
 export const metadata: Metadata = {
-  title: 'HubTube Reels — Trending & Most Watched HD Adult Reels | XVideos3',
+  title: 'HubTube Reels — Trending Desi Videos & Viral MMS Reels | XVideos3',
   description:
-    'Swipe through endless trending and most-watched HD adult reels, viral Desi MMS, and 4K videos on HubTube (XVideos3.cam).',
+    'Swipe through endless trending Desi videos, viral Desi MMS, and HD reels on HubTube (XVideos3.cam).',
   alternates: { canonical: '/reels' },
 };
 
@@ -41,10 +41,10 @@ async function getVideoById(id: string): Promise<ReelVideo | null> {
   }
 }
 
-async function fetchEpornerOrder(order: 'top-weekly' | 'most-popular'): Promise<ReelVideo[]> {
+async function fetchTrendingDesi(order: 'top-weekly' | 'most-popular'): Promise<ReelVideo[]> {
   try {
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=all&per_page=15&page=1&order=${order}&lq=0&thumbsize=big&format=json`,
+      `https://www.eporner.com/api/v2/video/search/?query=desi&per_page=15&page=1&order=${order}&lq=0&thumbsize=big&format=json`,
       { next: { revalidate: 1800 }, headers: FETCH_HEADERS }
     );
     if (!res.ok) return [];
@@ -59,11 +59,10 @@ async function fetchEpornerOrder(order: 'top-weekly' | 'most-popular'): Promise<
 async function getInitialReels(startId?: string): Promise<ReelVideo[]> {
   const [startVideo, trendingWeekly, mostPopular] = await Promise.all([
     startId ? getVideoById(startId) : Promise.resolve(null),
-    fetchEpornerOrder('top-weekly'),
-    fetchEpornerOrder('most-popular'),
+    fetchTrendingDesi('top-weekly'),
+    fetchTrendingDesi('most-popular'),
   ]);
 
-  // Interleave trending this week + all-time most watched, deduplicate, and prioritize high views
   const combined: ReelVideo[] = [];
   const seen = new Set<string>();
   const maxLen = Math.max(trendingWeekly.length, mostPopular.length);
