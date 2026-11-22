@@ -9,7 +9,7 @@ import {
   getTopPreferences,
   saveVideoRelatedSnapshot,
   getVideoRelatedSnapshot,
-} from '../../lib/userPrefs';
+} from '../../Lib/userPrefs';
 
 export type WatchVideo = {
   id: string;

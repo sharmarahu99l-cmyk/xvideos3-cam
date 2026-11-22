@@ -9,7 +9,7 @@ import {
   trackUserInterest,
   getTopPreferences,
   getWatchHistory,
-} from './lib/userPrefs';
+} from './Lib/userPrefs';
 
 type Video = StoredVideo;
 
