@@ -57,7 +57,6 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
-// Extracts specific keywords from the clicked video's title/tags so every video gets unique related results
 function extractUniqueRelatedQuery(v: WatchVideo | null, videoId: string): string {
   const candidates: string[] = [];
 
@@ -77,7 +76,6 @@ function extractUniqueRelatedQuery(v: WatchVideo | null, videoId: string): strin
     candidates.push(...tagWords);
   }
 
-  // Deduplicate case-insensitively while keeping specific terms first
   const uniqueTerms: string[] = [];
   const seen = new Set<string>();
   for (const term of candidates) {
@@ -95,7 +93,6 @@ function extractUniqueRelatedQuery(v: WatchVideo | null, videoId: string): strin
     return uniqueTerms[0];
   }
 
-  // If video metadata wasn't available, pick a deterministic topic from this video's ID hash
   const idx = hashString(videoId) % FALLBACK_TOPICS.length;
   return FALLBACK_TOPICS[idx];
 }
@@ -147,6 +144,9 @@ export default function WatchClient({
   const [relatedPage, setRelatedPage] = useState<number>(1);
   const [extraPages, setExtraPages] = useState<number>(0);
 
+  const relatedRef = useRef<WatchVideo[]>([]);
+  relatedRef.current = related;
+
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
@@ -181,12 +181,28 @@ export default function WatchClient({
         `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=top-rated`,
         { cache: 'no-store' }
       );
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? (data as WatchVideo[]) : [];
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data as WatchVideo[];
+      }
     } catch {
-      return [];
+      // Fallback below
     }
+
+    try {
+      const directRes = await fetch(
+        `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=top-rated&format=json`,
+        { cache: 'no-store' }
+      );
+      if (directRes.ok) {
+        const directData = await directRes.json();
+        if (Array.isArray(directData.videos)) return directData.videos as WatchVideo[];
+      }
+    } catch {
+      // Return empty array if both fail
+    }
+
+    return [];
   }, []);
 
   const loadSimilarVideos = useCallback(
@@ -197,7 +213,6 @@ export default function WatchClient({
         setLoadingRelated(true);
       }
 
-      // If user returns to an old video they already watched, restore what they saw before
       if (!append && pageNum === 1) {
         const savedSnapshot = getVideoRelatedSnapshot(id);
         if (savedSnapshot && savedSnapshot.length > 0) {
@@ -210,14 +225,12 @@ export default function WatchClient({
       }
 
       const query = extractUniqueRelatedQuery(targetVideo, id);
-      // Offset API page by video ID hash so even videos with overlapping words show different clips
       const idOffset = (hashString(id) % 8) + 1;
       const effectiveApiPage = pageNum === 1 ? idOffset : idOffset + pageNum - 1;
 
       const fetched = await fetchBatch(query, effectiveApiPage, 40);
       const previouslyShown = getGlobalShownIds();
 
-      // Prioritize fresh videos not shown on previous watch pages
       const freshMatches = fetched.filter((v) => v.id && v.id !== id && !previouslyShown.has(v.id));
       const olderMatches = fetched.filter((v) => v.id && v.id !== id && previouslyShown.has(v.id));
       let combined = [...freshMatches, ...olderMatches];
@@ -234,7 +247,7 @@ export default function WatchClient({
         setMoreVideos((prev) => {
           const seen = new Set<string>([
             id,
-            ...related.map((r) => r.id),
+            ...relatedRef.current.map((r) => r.id),
             ...prev.map((p) => p.id),
           ]);
           const uniqueNew: WatchVideo[] = [];
@@ -269,7 +282,7 @@ export default function WatchClient({
       setLoadingRelated(false);
       setLoadingMore(false);
     },
-    [id, related, fetchBatch]
+    [id, fetchBatch]
   );
 
   useEffect(() => {
@@ -291,31 +304,56 @@ export default function WatchClient({
       loadSimilarVideos(v, 1, false);
 
       const prefs = getTopPreferences(4);
-      const prefQuery = prefs[(hashString(id) % Math.max(1, prefs.length))] || 'desi bhabhi';
+      const prefQuery = prefs[hashString(id) % Math.max(1, prefs.length)] || 'desi bhabhi';
       fetchBatch(prefQuery, (hashString(id) % 10) + 1, 15).then((list) => {
         if (!active) return;
         setForYouVideos(list.filter((item) => item.id && item.id !== id).slice(0, 10));
       });
     };
 
-    if (initialVideo && initialVideo.id === id) {
-      handleLoadedVideo(initialVideo);
-      return () => {
-        active = false;
-      };
-    }
+    const loadVideoMetadata = async () => {
+      if (initialVideo && initialVideo.id === id) {
+        handleLoadedVideo(initialVideo);
+        return;
+      }
 
-    // Fetch real video metadata via our server API so mobile browsers never fail CORS
-    fetch(`/api/video/${encodeURIComponent(id)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: WatchVideo | null) => handleLoadedVideo(data))
-      .catch(() => handleLoadedVideo(null));
+      try {
+        const apiRes = await fetch(`/api/video/${encodeURIComponent(id)}`);
+        if (apiRes.ok) {
+          const data: WatchVideo | null = await apiRes.json();
+          if (data && data.id) {
+            handleLoadedVideo(data);
+            return;
+          }
+        }
+      } catch {
+        // Fallback to direct Eporner video lookup below
+      }
+
+      try {
+        const directRes = await fetch(
+          `https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`
+        );
+        if (directRes.ok) {
+          const directData: WatchVideo = await directRes.json();
+          if (directData && directData.id) {
+            handleLoadedVideo(directData);
+            return;
+          }
+        }
+      } catch {
+        // Handle null below
+      }
+
+      handleLoadedVideo(null);
+    };
+
+    loadVideoMetadata();
 
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, initialVideo]);
+  }, [id, initialVideo, loadSimilarVideos, fetchBatch]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -582,7 +620,8 @@ export default function WatchClient({
             <span className="text-white">UBE</span>
           </div>
         </div>
-<JuicyBanner />
+
+        <JuicyBanner />
 
         {/* Real Unique Video Title & Description */}
         {video && (

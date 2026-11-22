@@ -135,11 +135,25 @@ async function fetchVideos(
     );
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data)) return data as Video[];
+      if (Array.isArray(data) && data.length > 0) return data as Video[];
     }
   } catch {
-    // Return empty array on transient error
+    // Fallback to direct Eporner endpoint below
   }
+
+  try {
+    const directRes = await fetch(
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&format=json`,
+      { cache: 'no-store' }
+    );
+    if (directRes.ok) {
+      const directData = await directRes.json();
+      if (Array.isArray(directData.videos)) return directData.videos as Video[];
+    }
+  } catch {
+    // Return empty array if both fail
+  }
+
   return [];
 }
 
@@ -198,13 +212,13 @@ export default function HomeClient() {
       const prefQuery = prefs[0] || FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
       setRecentHistory(getWatchHistory(5));
 
-      let [fetched, similar, personalized] = await Promise.all([
+      const [initialFetched, similar, personalized] = await Promise.all([
         fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
         fetchVideos(urlQuery || 'desi bhabhi', urlPage + 2, 15, 'top-rated'),
         fetchVideos(prefQuery, (urlPage % 10) + 1, 15, 'latest'),
       ]);
 
-      // Guarantee main page never stays empty if a high page number or rare term returns 0
+      let fetched = initialFetched;
       if (fetched.length === 0) {
         const fallbackTopic = FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
         fetched = await fetchVideos(fallbackTopic, (urlPage % 20) + 1, PER_PAGE, 'most_viewed');
@@ -615,6 +629,8 @@ export default function HomeClient() {
             </button>
           )}
         </div>
+
+        <JuicyBanner />
 
         {/* Top Page Numbers Bar (Always Visible) */}
         {renderPaginationBar()}
