@@ -696,7 +696,7 @@ export default function WatchClient({
             </div>
           </div>
         )}
-
+<JuicyBanner adzone={1133788} width={308} height={286} />
         {/* More Videos + Prev/Next Controls */}
         <div className="mt-10 flex flex-col items-center gap-6">
           <button
@@ -726,7 +726,7 @@ export default function WatchClient({
             </button>
           </div>
         </div>
-
+<JuicyBanner adzone={1133788} width={308} height={286} />
         {/* Personalized Recommendations Based on User Preferences */}
         {forYouVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
