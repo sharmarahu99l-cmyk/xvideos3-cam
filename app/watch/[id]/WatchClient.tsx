@@ -512,19 +512,11 @@ export default function WatchClient({
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div
-          key={`player-wrap-${id}`}
-          className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
-        >
-          <iframe
-            key={`player-frame-${id}`}
-            ref={iframeRef}
-            src={`https://www.eporner.com/embed/${encodeURIComponent(id)}/`}
-            className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
-            allow="autoplay; fullscreen"
-            allowFullScreen
-          />
-        </div>
+        <HubTubePlayer
+  id={id}
+  title={video?.title}
+  poster={video?.default_thumb?.src}
+/>
 
         <JuicyBanner />
 
