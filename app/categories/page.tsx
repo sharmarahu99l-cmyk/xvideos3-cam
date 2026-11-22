@@ -84,9 +84,33 @@ const categoriesList: Category[] = [
 ];
 
 const usedThumbs = new Set<string>();
+let activeCatFetches = 0;
+const catQueue: Array<() => void> = [];
+
+function enqueueCatFetch<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      activeCatFetches++;
+      task()
+        .then(resolve)
+        .catch(reject)
+        .finally(() => {
+          activeCatFetches--;
+          const next = catQueue.shift();
+          if (next) next();
+        });
+    };
+
+    if (activeCatFetches < 3) {
+      run();
+    } else {
+      catQueue.push(run);
+    }
+  });
+}
 
 async function fetchCategoryThumb(cat: Category): Promise<string | null> {
-  const cacheKey = `cat_thumb_v1_${cat.name}`;
+  const cacheKey = `cat_thumb_v2_${cat.name}`;
   try {
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
@@ -103,8 +127,7 @@ async function fetchCategoryThumb(cat: Category): Promise<string | null> {
     );
     if (res.ok) {
       const data = await res.json();
-      if (data.videos && data.videos.length > 0) {
-        // Pick a thumbnail not already used by another category card
+      if (Array.isArray(data.videos) && data.videos.length > 0) {
         const uniqueVideo =
           data.videos.find(
             (v: { default_thumb?: { src?: string } }) =>
@@ -128,8 +151,9 @@ async function fetchCategoryThumb(cat: Category): Promise<string | null> {
 
 function CategoryCard({ cat }: { cat: Category }) {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const cardRef = useRef<HTMLAnchorElement>(null);
+  const [failed, setFailed] = useState<boolean>(false);
+  const [isVisible, setIsVisible] = useState<boolean>(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -139,7 +163,7 @@ function CategoryCard({ cat }: { cat: Category }) {
           observer.disconnect();
         }
       },
-      { rootMargin: '250px' }
+      { rootMargin: '200px' }
     );
 
     if (cardRef.current) observer.observe(cardRef.current);
@@ -150,8 +174,13 @@ function CategoryCard({ cat }: { cat: Category }) {
     if (!isVisible) return;
     let active = true;
 
-    fetchCategoryThumb(cat).then((url) => {
-      if (active && url) setImgSrc(url);
+    enqueueCatFetch(() => fetchCategoryThumb(cat)).then((url) => {
+      if (!active) return;
+      if (url) {
+        setImgSrc(url);
+      } else {
+        setFailed(true);
+      }
     });
 
     return () => {
@@ -160,30 +189,31 @@ function CategoryCard({ cat }: { cat: Category }) {
   }, [isVisible, cat]);
 
   return (
-    <Link
-      ref={cardRef}
-      href={`/?q=${encodeURIComponent(cat.name)}`}
-      className="block group"
-    >
-      <div className="relative rounded-3xl overflow-hidden aspect-square bg-[#1a1a1a]">
-        {imgSrc ? (
-          <img
-            src={imgSrc}
-            alt={cat.name}
-            loading="lazy"
-            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full bg-[#222] animate-pulse flex items-center justify-center text-xs text-neutral-500">
-            Loading...
+    <div ref={cardRef}>
+      <Link href={`/?q=${encodeURIComponent(cat.name)}`} className="block group">
+        <div className="relative rounded-3xl overflow-hidden aspect-square bg-[#1a1a1a]">
+          {imgSrc && !failed ? (
+            <img
+              src={imgSrc}
+              alt={cat.name}
+              loading="lazy"
+              onError={() => setFailed(true)}
+              className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            />
+          ) : failed ? (
+            <div className="w-full h-full bg-gradient-to-br from-[#262626] to-[#111] flex items-center justify-center text-3xl font-bold text-[#FF9900]/70">
+              {cat.name.charAt(0)}
+            </div>
+          ) : (
+            <div className="w-full h-full bg-[#222] animate-pulse" />
+          )}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
+            <p className="text-white text-center font-semibold text-lg">{cat.name}</p>
+            <p className="text-[#FF9900] text-center text-sm mt-1">{cat.count} Videos</p>
           </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-          <p className="text-white text-center font-semibold text-lg">{cat.name}</p>
-          <p className="text-[#FF9900] text-center text-sm mt-1">{cat.count} Videos</p>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
