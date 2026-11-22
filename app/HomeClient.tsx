@@ -4,16 +4,14 @@ import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from './VideoCard';
+import {
+  StoredVideo,
+  trackUserInterest,
+  getTopPreferences,
+  getWatchHistory,
+} from './lib/userPrefs';
 
-type Video = {
-  id: string;
-  title: string;
-  default_thumb: { src: string };
-  length_min: number;
-  length_sec: number;
-  embed: string;
-  views?: string;
-};
+type Video = StoredVideo;
 
 type SearchHint = {
   label: string;
@@ -21,6 +19,19 @@ type SearchHint = {
 };
 
 const PER_PAGE = 60;
+const MAX_PAGES = 200;
+
+const FALLBACK_TOPICS = [
+  'desi bhabhi',
+  'indian aunty',
+  'desi homemade',
+  'pakistani mms',
+  'hindi audio',
+  '4k hd',
+  'milf',
+  'asian',
+  'amateur',
+];
 
 const INSTANT_DESI = [
   "Desi", "Desi Bhabhi", "Desi Aunty", "Desi MMS", "Desi Viral MMS", "Desi Sex",
@@ -65,13 +76,7 @@ const INSTANT_PORNSTARS = [
 
 function getInstantLocalHints(query: string): SearchHint[] {
   const lowerQ = query.trim().toLowerCase();
-  if (!lowerQ) {
-    return [
-      ...INSTANT_DESI.slice(0, 12).map((label) => ({ label, type: 'desi' as const })),
-      ...INSTANT_CATEGORIES.slice(0, 12).map((label) => ({ label, type: 'category' as const })),
-      ...INSTANT_PORNSTARS.slice(0, 8).map((label) => ({ label, type: 'pornstar' as const })),
-    ];
-  }
+  if (!lowerQ) return [];
 
   const seen = new Set<string>();
   const out: SearchHint[] = [];
@@ -102,6 +107,19 @@ function getInstantLocalHints(query: string): SearchHint[] {
   return out;
 }
 
+function getPageWindow(current: number, maxPages: number = MAX_PAGES): number[] {
+  const windowSize = 9;
+  let start = Math.max(1, current - 4);
+  const end = Math.min(maxPages, start + windowSize - 1);
+  start = Math.max(1, end - windowSize + 1);
+
+  const pages: number[] = [];
+  for (let p = start; p <= end; p++) {
+    pages.push(p);
+  }
+  return pages;
+}
+
 async function fetchVideos(
   query: string,
   pageNum: number = 1,
@@ -119,7 +137,7 @@ async function fetchVideos(
       if (Array.isArray(data)) return data as Video[];
     }
   } catch {
-    // Return empty list on network error
+    // Return empty array on transient error
   }
   return [];
 }
@@ -136,10 +154,12 @@ export default function HomeClient() {
   const router = useRouter();
 
   const urlQuery = searchParams?.get('q') ?? '';
-  const urlPage = Math.max(1, Number(searchParams?.get('page')) || 1);
+  const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || 1));
 
   const [videos, setVideos] = useState<Video[]>([]);
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
+  const [forYouVideos, setForYouVideos] = useState<Video[]>([]);
+  const [recentHistory, setRecentHistory] = useState<Video[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
@@ -164,7 +184,8 @@ export default function HomeClient() {
       setLoadedExtraPages(0);
       window.scrollTo(0, 0);
 
-      if (urlQuery) {
+      if (urlQuery.trim()) {
+        trackUserInterest([urlQuery.trim()]);
         document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
       } else if (urlPage > 1) {
         document.title = `Desi & HD Porn Videos - Page ${urlPage} | HubTube - XVideos3`;
@@ -172,16 +193,47 @@ export default function HomeClient() {
         document.title = 'HubTube (XVideos3) - Free Desi, Indian & HD Porn Videos';
       }
 
-      const [fetched, similar] = await Promise.all([
+      const prefs = getTopPreferences(3);
+      const prefQuery = prefs[0] || FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
+      setRecentHistory(getWatchHistory(5));
+
+      const [fetched, similar, personalized] = await Promise.all([
         fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
-        fetchVideos(urlQuery || 'desi bhabhi', urlPage + 1, 15, 'top-rated'),
+        fetchVideos(urlQuery || 'desi bhabhi', urlPage + 2, 15, 'top-rated'),
+        fetchVideos(prefQuery, (urlPage % 10) + 1, 15, 'latest'),
       ]);
 
       if (!active) return;
 
-      setVideos(fetched);
-      const mainIds = new Set(fetched.map((v) => v.id));
-      setSimilarVideos(similar.filter((v) => !mainIds.has(v.id)).slice(0, 10));
+      // Deduplicate across all three sections so no video repeats on screen
+      const seenIds = new Set<string>();
+      const uniqueMain: Video[] = [];
+      for (const v of fetched) {
+        if (v.id && !seenIds.has(v.id)) {
+          seenIds.add(v.id);
+          uniqueMain.push(v);
+        }
+      }
+
+      const uniqueSimilar: Video[] = [];
+      for (const v of similar) {
+        if (v.id && !seenIds.has(v.id)) {
+          seenIds.add(v.id);
+          uniqueSimilar.push(v);
+        }
+      }
+
+      const uniqueForYou: Video[] = [];
+      for (const v of personalized) {
+        if (v.id && !seenIds.has(v.id)) {
+          seenIds.add(v.id);
+          uniqueForYou.push(v);
+        }
+      }
+
+      setVideos(uniqueMain);
+      setSimilarVideos(uniqueSimilar.slice(0, 10));
+      setForYouVideos(uniqueForYou.slice(0, 10));
       setLoading(false);
     };
 
@@ -201,10 +253,16 @@ export default function HomeClient() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Only show & fetch hints when user has actually typed something
   useEffect(() => {
-    if (!showHints) return;
+    const trimmed = searchQuery.trim();
+    if (!showHints || trimmed.length === 0) {
+      setHints([]);
+      setActiveHintIdx(-1);
+      return;
+    }
 
-    const local = getInstantLocalHints(searchQuery);
+    const local = getInstantLocalHints(trimmed);
     setHints(local);
     setActiveHintIdx(-1);
 
@@ -214,18 +272,19 @@ export default function HomeClient() {
       suggestAbortRef.current = controller;
 
       try {
-        const res = await fetch(`/api/suggest?q=${encodeURIComponent(searchQuery)}`, {
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
           signal: controller.signal,
+          cache: 'no-store',
         });
         if (!res.ok) return;
         const data: { hints?: SearchHint[] } = await res.json();
-        if (Array.isArray(data.hints) && data.hints.length > 0) {
+        if (Array.isArray(data.hints)) {
           setHints(data.hints);
         }
       } catch {
-        // Keep instant local hints on abort
+        // Keep local hints on abort
       }
-    }, 150);
+    }, 140);
 
     return () => clearTimeout(timer);
   }, [searchQuery, showHints]);
@@ -233,9 +292,10 @@ export default function HomeClient() {
   const navigateToSearch = (term: string, targetPage: number = 1) => {
     setShowHints(false);
     setShowMenu(false);
+    const safePage = Math.min(MAX_PAGES, Math.max(1, targetPage));
     const params = new URLSearchParams();
     if (term.trim()) params.set('q', term.trim());
-    if (targetPage > 1) params.set('page', String(targetPage));
+    if (safePage > 1) params.set('page', String(safePage));
     const qs = params.toString();
     router.push(qs ? `/?${qs}` : '/', { scroll: true });
   };
@@ -283,21 +343,46 @@ export default function HomeClient() {
     navigateToSearch(urlQuery, pageNum);
   };
 
+  // Never-ending Load More: if current search runs out, pivots smoothly to preferred/trending topics
   const handleLoadMore = async () => {
     if (loadingMore) return;
     setLoadingMore(true);
-    const nextBatchPage = page + loadedExtraPages + 1;
-    const more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
-    if (more.length > 0) {
-      setVideos((prev) => {
-        const existingIds = new Set(prev.map((v) => v.id));
-        const uniqueNew = more.filter((v) => !existingIds.has(v.id));
-        return [...prev, ...uniqueNew];
-      });
-      setLoadedExtraPages((prev) => prev + 1);
+
+    const nextStep = loadedExtraPages + 1;
+    const nextBatchPage = page + nextStep;
+    let more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
+
+    const existingIds = new Set(videos.map((v) => v.id));
+    let uniqueNew = more.filter((v) => v.id && !existingIds.has(v.id));
+
+    if (uniqueNew.length < 10) {
+      const prefs = getTopPreferences(5);
+      const pool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
+      const fallbackTopic = pool[nextStep % pool.length];
+      const extraBatch = await fetchVideos(fallbackTopic, (nextStep % 20) + 1, PER_PAGE, 'latest');
+      uniqueNew = [
+        ...uniqueNew,
+        ...extraBatch.filter((v) => v.id && !existingIds.has(v.id)),
+      ];
     }
+
+    if (uniqueNew.length > 0) {
+      const dedupedBatch: Video[] = [];
+      const batchSeen = new Set(existingIds);
+      for (const v of uniqueNew) {
+        if (!batchSeen.has(v.id)) {
+          batchSeen.add(v.id);
+          dedupedBatch.push(v);
+        }
+      }
+      setVideos((prev) => [...prev, ...dedupedBatch]);
+      setLoadedExtraPages(nextStep);
+    }
+
     setLoadingMore(false);
   };
+
+  const pageWindow = getPageWindow(page, MAX_PAGES);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
@@ -310,15 +395,18 @@ export default function HomeClient() {
             <span className="text-3xl md:text-4xl font-black text-white">UBE</span>
           </Link>
 
-          {/* Instant XVideos-Style Search Bar with Unlimited Hints */}
+          {/* Search Bar: Hints ONLY appear when user types */}
           <div ref={searchWrapRef} className="relative flex-1 max-w-xl mx-2">
             <form onSubmit={handleSearch} className="relative flex items-center">
               <input
                 value={searchQuery}
-                onFocus={() => setShowHints(true)}
+                onFocus={() => {
+                  if (searchQuery.trim().length > 0) setShowHints(true);
+                }}
                 onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowHints(true);
+                  const val = e.target.value;
+                  setSearchQuery(val);
+                  setShowHints(val.trim().length > 0);
                 }}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Search desi, bhabhi, pornstars, categories..."
@@ -330,7 +418,8 @@ export default function HomeClient() {
                   type="button"
                   onClick={() => {
                     setSearchQuery('');
-                    setShowHints(true);
+                    setHints([]);
+                    setShowHints(false);
                   }}
                   aria-label="Clear search"
                   className="absolute right-12 text-gray-400 hover:text-white px-2 text-lg"
@@ -347,10 +436,10 @@ export default function HomeClient() {
               </button>
             </form>
 
-            {showHints && hints.length > 0 && (
+            {showHints && searchQuery.trim().length > 0 && hints.length > 0 && (
               <div className="absolute left-0 right-0 mt-2 bg-[#161616] border border-gray-700 rounded-2xl shadow-2xl z-[10001] max-h-[65vh] overflow-y-auto">
                 <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-800 flex justify-between items-center sticky top-0 bg-[#161616]">
-                  <span>{searchQuery.trim() ? `Suggestions (${hints.length})` : 'Trending & Categories'}</span>
+                  <span>Suggestions ({hints.length})</span>
                   <button
                     type="button"
                     onClick={() => setShowHints(false)}
@@ -475,7 +564,7 @@ export default function HomeClient() {
           </div>
         )}
 
-        {/* Load More + Full Pagination */}
+        {/* Load More + 1, 2, 3, 4, 5, 6, 7, 8, 9 ... 200 Pagination */}
         {videos.length > 0 && (
           <div className="mt-10 space-y-6">
             <div className="flex justify-center">
@@ -492,30 +581,55 @@ export default function HomeClient() {
               <button
                 onClick={() => handlePageClick(Math.max(1, page - 1))}
                 disabled={page <= 1}
-                className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40"
+                className="px-5 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40 transition"
               >
                 Prev
               </button>
-              {Array.from({ length: 10 }, (_, i) => {
-                const p = page <= 5 ? i + 1 : page - 5 + i;
-                if (p > 500) return null;
-                return (
+
+              {pageWindow[0] > 1 && (
+                <>
                   <button
-                    key={p}
-                    onClick={() => handlePageClick(p)}
-                    className={`px-5 py-3 rounded-full font-bold ${
-                      page === p
-                        ? 'bg-[#FF9900] text-black'
-                        : 'bg-[#222] hover:bg-[#FF9900] hover:text-black'
-                    }`}
+                    onClick={() => handlePageClick(1)}
+                    className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold transition"
                   >
-                    {p}
+                    1
                   </button>
-                );
-              })}
+                  {pageWindow[0] > 2 && <span className="px-2 text-gray-500 font-bold">…</span>}
+                </>
+              )}
+
+              {pageWindow.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handlePageClick(p)}
+                  className={`px-4 py-2.5 rounded-full font-bold transition ${
+                    page === p
+                      ? 'bg-[#FF9900] text-black'
+                      : 'bg-[#222] hover:bg-[#FF9900] hover:text-black'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+
+              {pageWindow[pageWindow.length - 1] < MAX_PAGES && (
+                <>
+                  {pageWindow[pageWindow.length - 1] < MAX_PAGES - 1 && (
+                    <span className="px-2 text-gray-500 font-bold">…</span>
+                  )}
+                  <button
+                    onClick={() => handlePageClick(MAX_PAGES)}
+                    className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold transition"
+                  >
+                    {MAX_PAGES}
+                  </button>
+                </>
+              )}
+
               <button
-                onClick={() => handlePageClick(page + 1)}
-                className="px-6 py-3 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold"
+                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
+                disabled={page >= MAX_PAGES}
+                className="px-5 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40 transition"
               >
                 Next
               </button>
@@ -523,23 +637,63 @@ export default function HomeClient() {
           </div>
         )}
 
+        {/* Personalized Recommendations Based on User Preferences */}
+        {!loading && forYouVideos.length > 0 && (
+          <section className="mt-14 pt-8 border-t border-gray-800">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-black text-[#FF9900]">
+                Recommended For You
+              </h2>
+              <button
+                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
+                className="text-sm font-bold text-[#FF9900] hover:underline"
+              >
+                Explore More →
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {forYouVideos.map((v) => (
+                <Link key={`foryou-${v.id}`} href={`/watch/${v.id}`} className="block">
+                  <VideoCard video={v} />
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Similar Videos You May Also Like */}
         {!loading && similarVideos.length > 0 && (
-          <section className="mt-14 pt-8 border-t border-gray-800">
+          <section className="mt-12 pt-8 border-t border-gray-800">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-black text-[#FF9900]">
                 Similar Videos You May Also Like
               </h2>
               <button
-                onClick={() => handlePageClick(page + 1)}
+                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
                 className="text-sm font-bold text-[#FF9900] hover:underline"
               >
-                View More →
+                Next Page →
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {similarVideos.map((v) => (
                 <Link key={`sim-${v.id}`} href={`/watch/${v.id}`} className="block">
+                  <VideoCard video={v} />
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Recently Watched (Jump Back to Old Videos Anytime) */}
+        {!loading && recentHistory.length > 0 && (
+          <section className="mt-12 pt-8 border-t border-gray-800">
+            <h2 className="text-2xl font-black text-[#FF9900] mb-6">
+              Recently Watched
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {recentHistory.map((v) => (
+                <Link key={`hist-${v.id}`} href={`/watch/${v.id}`} className="block">
                   <VideoCard video={v} />
                 </Link>
               ))}

@@ -16,7 +16,7 @@ const CATEGORIES = [
   "Hotel", "Fat", "Outdoor", "Squirt", "Fetish", "Redhead", "Housewives",
   "Sleep", "Small Tits", "Swinger", "Bukkake", "Uniform", "Striptease",
   "Bondage", "For Women", "Nurses", "Handjob", "Fisting", "HQ Porn",
-  "Bisexual", "HD Sex", "Footjob", "ASMR", "Doctor"
+  "Bisexual", "HD Sex", "Footjob", "ASMR", "Doctor",
 ];
 
 const PORNSTARS = [
@@ -32,7 +32,7 @@ const PORNSTARS = [
   "Johnny Love", "Alexandra Cat", "Gabbie Carter", "Hazel Moore", "Skylar Vox",
   "Bridgette B", "Damion Dayski", "Jada Stevens", "Julia Ann", "Phoenix Marie",
   "Anissa Kate", "Johnny Sins", "Chanel Preston", "Alura Jenson", "Reagan Foxx",
-  "Eliza Ibarra", "Ariella Ferrera", "Mick Blue"
+  "Eliza Ibarra", "Ariella Ferrera", "Mick Blue",
 ];
 
 const DESI_AND_TRENDING = [
@@ -48,7 +48,6 @@ const DESI_AND_TRENDING = [
   "Desi Shower", "Desi Massage", "Desi Blowjob", "Desi Anal", "Desi Doggy",
   "Desi Big Boobs", "Desi Big Ass", "Desi Stepmom", "Desi Suhag Raat", "Desi First Night",
   "Desi Leaked Scandal", "Desi Hidden Cam", "Desi OnlyFans", "Desi Web Series",
-  "4K HD", "1080p Full HD", "Trending Today", "Most Viewed"
 ];
 
 interface EpornerVideo {
@@ -61,7 +60,7 @@ async function fetchLiveSuggestions(q: string): Promise<string[]> {
   const timer = setTimeout(() => controller.abort(), 3500);
   try {
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(q)}&per_page=20&format=json`,
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(q)}&per_page=25&format=json`,
       {
         signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
@@ -98,14 +97,9 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q')?.trim() || '';
   const lowerQ = q.toLowerCase();
 
-  // If input is empty (user just focused the search box), show top categories & Desi searches
+  // Do NOT return hints until the user actually types something
   if (!lowerQ) {
-    const initialHints: SearchHint[] = [
-      ...DESI_AND_TRENDING.slice(0, 15).map((label) => ({ label, type: 'desi' as const })),
-      ...CATEGORIES.slice(0, 15).map((label) => ({ label, type: 'category' as const })),
-      ...PORNSTARS.slice(0, 10).map((label) => ({ label, type: 'pornstar' as const })),
-    ];
-    return NextResponse.json({ hints: initialHints });
+    return NextResponse.json({ hints: [] });
   }
 
   const seen = new Set<string>();
@@ -119,7 +113,6 @@ export async function GET(req: NextRequest) {
     }
   };
 
-  // Prioritize prefix matches first, then substring matches
   const matchList = (list: string[], type: SearchHint['type']) => {
     list
       .filter((item) => item.toLowerCase().startsWith(lowerQ))
@@ -133,17 +126,14 @@ export async function GET(req: NextRequest) {
   matchList(CATEGORIES, 'category');
   matchList(PORNSTARS, 'pornstar');
 
-  // Pull live video titles & tags matching the query (no hard cap)
-  if (lowerQ.length >= 2) {
-    const live = await fetchLiveSuggestions(q);
-    live.forEach((item) => pushUnique(item, 'video'));
-  }
+  const live = await fetchLiveSuggestions(q);
+  live.forEach((item) => pushUnique(item, 'video'));
 
   return NextResponse.json(
     { hints },
     {
       headers: {
-        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=86400',
+        'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600',
       },
     }
   );

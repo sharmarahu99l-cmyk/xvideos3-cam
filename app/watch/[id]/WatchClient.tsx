@@ -4,6 +4,12 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from '../../VideoCard';
+import {
+  recordWatchedVideo,
+  getTopPreferences,
+  saveVideoRelatedSnapshot,
+  getVideoRelatedSnapshot,
+} from '../../lib/userPrefs';
 
 export type WatchVideo = {
   id: string;
@@ -27,6 +33,8 @@ const STOP_WORDS = new Set([
   'him', 'you', 'your', 'are', 'was', 'were', 'has', 'have', 'hot', 'free',
   'video', 'videos', 'full', 'new', 'best', 'xxx', 'porn', 'sex',
 ]);
+
+const FALLBACK_TOPICS = ['desi bhabhi', 'indian', 'milf', '4k', 'asian', 'amateur', 'big tits'];
 
 function extractRelatedQuery(v: WatchVideo | null): string {
   if (!v) return 'desi';
@@ -65,6 +73,7 @@ export default function WatchClient({
   const [video, setVideo] = useState<WatchVideo | null>(initialVideo);
   const [related, setRelated] = useState<WatchVideo[]>([]);
   const [moreVideos, setMoreVideos] = useState<WatchVideo[]>([]);
+  const [forYouVideos, setForYouVideos] = useState<WatchVideo[]>([]);
   const [loadingRelated, setLoadingRelated] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [showMenu, setShowMenu] = useState<boolean>(false);
@@ -72,13 +81,48 @@ export default function WatchClient({
   const [relatedPage, setRelatedPage] = useState<number>(1);
   const [extraPages, setExtraPages] = useState<number>(0);
 
-  // Instant search hints state
+  // Player container & fullscreen state (keeps HUBTUBE mask active in fullscreen)
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
   const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    const el = playerContainerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  };
+
+  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 30): Promise<WatchVideo[]> => {
+    try {
+      const res = await fetch(
+        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? (data as WatchVideo[]) : [];
+    } catch {
+      return [];
+    }
+  }, []);
 
   const loadSimilarVideos = useCallback(
     async (targetVideo: WatchVideo | null, pageNum: number, append: boolean) => {
@@ -88,65 +132,103 @@ export default function WatchClient({
         setLoadingRelated(true);
       }
 
-      const query = extractRelatedQuery(targetVideo);
-
-      try {
-        const res = await fetch(
-          `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=30`
-        );
-        const data: WatchVideo[] = res.ok ? await res.json() : [];
-        const filtered = (Array.isArray(data) ? data : []).filter((v) => v.id !== id);
-
-        if (append) {
-          setMoreVideos((prev) => {
-            const seen = new Set([...related.map((r) => r.id), ...prev.map((p) => p.id)]);
-            const uniqueNew = filtered.filter((v) => !seen.has(v.id));
-            return [...prev, ...uniqueNew];
-          });
-        } else {
-          setRelated(filtered);
+      if (!append && pageNum === 1) {
+        const savedSnapshot = getVideoRelatedSnapshot(id);
+        if (savedSnapshot && savedSnapshot.length > 0) {
+          setRelated(savedSnapshot);
           setMoreVideos([]);
           setExtraPages(0);
+          setLoadingRelated(false);
+          return;
         }
-      } catch {
-        // Keep current list on transient error
-      } finally {
-        setLoadingRelated(false);
-        setLoadingMore(false);
       }
+
+      const query = extractRelatedQuery(targetVideo);
+      const fetched = await fetchBatch(query, pageNum, 30);
+      let filtered = fetched.filter((v) => v.id && v.id !== id);
+
+      if (filtered.length < 10) {
+        const prefs = getTopPreferences(5);
+        const pool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
+        const fallbackQuery = pool[pageNum % pool.length];
+        const fallbackBatch = await fetchBatch(fallbackQuery, (pageNum % 15) + 1, 30);
+        filtered = [...filtered, ...fallbackBatch.filter((v) => v.id && v.id !== id)];
+      }
+
+      if (append) {
+        setMoreVideos((prev) => {
+          const seen = new Set<string>([
+            id,
+            ...related.map((r) => r.id),
+            ...prev.map((p) => p.id),
+          ]);
+          const uniqueNew: WatchVideo[] = [];
+          for (const v of filtered) {
+            if (!seen.has(v.id)) {
+              seen.add(v.id);
+              uniqueNew.push(v);
+            }
+          }
+          return [...prev, ...uniqueNew];
+        });
+      } else {
+        const seen = new Set<string>([id]);
+        const uniqueRelated: WatchVideo[] = [];
+        for (const v of filtered) {
+          if (!seen.has(v.id)) {
+            seen.add(v.id);
+            uniqueRelated.push(v);
+          }
+        }
+        setRelated(uniqueRelated);
+        setMoreVideos([]);
+        setExtraPages(0);
+        if (pageNum === 1 && uniqueRelated.length > 0) {
+          saveVideoRelatedSnapshot(id, uniqueRelated);
+        }
+      }
+
+      setLoadingRelated(false);
+      setLoadingMore(false);
     },
-    [id, related]
+    [id, related, fetchBatch]
   );
 
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    window.scrollTo(0, 0);
     setRelatedPage(1);
     setMoreVideos([]);
     setExtraPages(0);
 
+    const handleLoadedVideo = (v: WatchVideo | null) => {
+      if (v) {
+        setVideo(v);
+        if (v.title) {
+          document.title = `${v.title} | HubTube - XVideos3 HD`;
+        }
+        recordWatchedVideo(v);
+      }
+      loadSimilarVideos(v, 1, false);
+
+      const prefs = getTopPreferences(3);
+      const prefQuery = prefs[0] || 'desi bhabhi';
+      fetchBatch(prefQuery, 2, 15).then((list) => {
+        setForYouVideos(list.filter((item) => item.id && item.id !== id).slice(0, 10));
+      });
+    };
+
     if (initialVideo && initialVideo.id === id) {
-      setVideo(initialVideo);
-      document.title = `${initialVideo.title} | HubTube - XVideos3 HD`;
-      loadSimilarVideos(initialVideo, 1, false);
+      handleLoadedVideo(initialVideo);
       return;
     }
 
     fetch(`https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`)
       .then((res) => res.json())
-      .then((data: WatchVideo) => {
-        setVideo(data);
-        if (data?.title) {
-          document.title = `${data.title} | HubTube - XVideos3 HD`;
-        }
-        loadSimilarVideos(data, 1, false);
-      })
-      .catch(() => {
-        loadSimilarVideos(null, 1, false);
-      });
+      .then((data: WatchVideo) => handleLoadedVideo(data))
+      .catch(() => handleLoadedVideo(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, initialVideo]);
 
-  // Close search dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
@@ -157,10 +239,13 @@ export default function WatchClient({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch unlimited hints from /api/suggest
   useEffect(() => {
-    if (!showHints) return;
-    setActiveHintIdx(-1);
+    const trimmed = searchInput.trim();
+    if (!showHints || trimmed.length === 0) {
+      setHints([]);
+      setActiveHintIdx(-1);
+      return;
+    }
 
     const timer = setTimeout(async () => {
       if (suggestAbortRef.current) suggestAbortRef.current.abort();
@@ -168,8 +253,9 @@ export default function WatchClient({
       suggestAbortRef.current = controller;
 
       try {
-        const res = await fetch(`/api/suggest?q=${encodeURIComponent(searchInput)}`, {
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
           signal: controller.signal,
+          cache: 'no-store',
         });
         if (!res.ok) return;
         const data: { hints?: SearchHint[] } = await res.json();
@@ -247,16 +333,19 @@ export default function WatchClient({
             ☰
           </button>
 
-          {/* Instant Search with Unlimited Hints */}
+          {/* Search Bar: Hints ONLY appear when typing */}
           <div ref={searchWrapRef} className="relative flex-1 max-w-xl">
             <form onSubmit={handleSearch} className="relative flex items-center">
               <input
                 type="text"
                 value={searchInput}
-                onFocus={() => setShowHints(true)}
+                onFocus={() => {
+                  if (searchInput.trim().length > 0) setShowHints(true);
+                }}
                 onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  setShowHints(true);
+                  const val = e.target.value;
+                  setSearchInput(val);
+                  setShowHints(val.trim().length > 0);
                 }}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Search desi, bhabhi, pornstars, categories..."
@@ -272,10 +361,10 @@ export default function WatchClient({
               </button>
             </form>
 
-            {showHints && hints.length > 0 && (
+            {showHints && searchInput.trim().length > 0 && hints.length > 0 && (
               <div className="absolute left-0 right-0 mt-2 bg-[#161616] border border-gray-700 rounded-2xl shadow-2xl z-[10001] max-h-[60vh] overflow-y-auto">
                 <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-800 flex justify-between items-center sticky top-0 bg-[#161616]">
-                  <span>{searchInput.trim() ? `Suggestions (${hints.length})` : 'Trending & Categories'}</span>
+                  <span>Suggestions ({hints.length})</span>
                   <button
                     type="button"
                     onClick={() => setShowHints(false)}
@@ -320,7 +409,7 @@ export default function WatchClient({
         </div>
       </header>
 
-      {/* SIDEBAR - same as HomeClient */}
+      {/* SIDEBAR */}
       {showMenu && (
         <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
           <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
@@ -366,13 +455,39 @@ export default function WatchClient({
 
       {/* MAIN CONTENT */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="relative">
+        <div
+          ref={playerContainerRef}
+          className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden"
+        >
           <iframe
             src={`https://www.eporner.com/embed/${id}/`}
-            className="w-full aspect-video bg-black rounded-2xl"
+            className="w-full h-full border-0"
+            allow="autoplay; fullscreen"
             allowFullScreen
           />
-          <div className="absolute bottom-4 right-4 bg-black/80 px-3 py-1 rounded-lg flex items-center gap-1 text-xl font-black z-10 pointer-events-none">
+
+          {/* Top bar mask: covers "Hosted by Eporner" / external links */}
+          <div className="absolute top-0 left-0 right-0 h-14 bg-gradient-to-b from-black via-black/95 to-transparent flex items-center justify-between px-4 z-20 pointer-events-auto">
+            <div className="flex items-center gap-0.5 text-lg font-black select-none">
+              <span className="text-[#FF9900]">H</span>
+              <span className="text-white">UB</span>
+              <span className="text-[#FF9900]">T</span>
+              <span className="text-white">UBE</span>
+              <span className="ml-2 text-[10px] font-bold bg-[#FF9900] text-black px-2 py-0.5 rounded-full">
+                HD
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="text-xs font-bold bg-[#222]/90 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full transition"
+            >
+              {isFullscreen ? 'Exit Fullscreen' : '⛶ Fullscreen'}
+            </button>
+          </div>
+
+          {/* Bottom-right corner mask: covers corner logo without blocking the progress bar */}
+          <div className="absolute bottom-11 right-3 bg-black/95 px-3 py-1 rounded-lg flex items-center gap-0.5 text-base font-black z-20 select-none">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
             <span className="text-[#FF9900]">T</span>
@@ -453,7 +568,7 @@ export default function WatchClient({
           </div>
         )}
 
-        {/* More Videos + Prev/Next Page Controls */}
+        {/* More Videos + Prev/Next Controls */}
         <div className="mt-10 flex flex-col items-center gap-6">
           <button
             onClick={handleLoadMore}
@@ -482,6 +597,22 @@ export default function WatchClient({
             </button>
           </div>
         </div>
+
+        {/* Personalized Recommendations Based on User Preferences */}
+        {forYouVideos.length > 0 && (
+          <section className="mt-14 pt-8 border-t border-gray-800">
+            <h2 className="text-[#FF9900] text-2xl font-bold mb-6">
+              Picked For You
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {forYouVideos.map((v) => (
+                <Link key={`pref-${v.id}`} href={`/watch/${v.id}`} className="block">
+                  <VideoCard video={v} />
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

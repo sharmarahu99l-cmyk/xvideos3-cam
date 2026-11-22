@@ -21,7 +21,7 @@ export default function GlobalUI() {
 
   const handleBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
-      router.back();
+      window.history.back();
     } else if (pathname !== '/') {
       router.push('/');
     }
@@ -35,7 +35,7 @@ export default function GlobalUI() {
 
       <button
         onClick={handleBack}
-        aria-label="Go Back"
+        aria-label="Go Back One Page"
         title="Go Back"
         className="fixed bottom-6 right-6 bg-[#FF9900] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-2xl z-[10000] hover:bg-[#ffaa33] active:scale-95 transition text-3xl font-bold"
       >
