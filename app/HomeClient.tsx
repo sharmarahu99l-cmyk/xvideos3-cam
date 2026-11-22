@@ -151,24 +151,11 @@ async function fetchVideos(
     );
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) return data as Video[];
+      if (Array.isArray(data)) return data as Video[];
     }
   } catch {
-    // Fallback to direct Eporner endpoint below
+    // Return empty array on transient error
   }
-
-  try {
-    const directRes = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&format=json`
-    );
-    if (directRes.ok) {
-      const directData = await directRes.json();
-      if (Array.isArray(directData.videos)) return directData.videos as Video[];
-    }
-  } catch {
-    // Return empty array if both fail
-  }
-
   return [];
 }
 
