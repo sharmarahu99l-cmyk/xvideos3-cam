@@ -5,23 +5,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  if (!id) {
-    return NextResponse.json(null, { status: 400 });
-  }
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`,
+      `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`,
       {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
-        },
+        next: { revalidate: 3600 },
+        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36' },
       }
     );
-    clearTimeout(timer);
 
     if (res.ok) {
       const data = await res.json();
@@ -34,7 +26,7 @@ export async function GET(
       }
     }
   } catch {
-    // Return null on timeout/error
+    // Client will use direct Eporner fallback
   }
 
   return NextResponse.json(null, { status: 200 });

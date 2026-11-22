@@ -1,16 +1,18 @@
 import type { Metadata } from 'next';
-import WatchClient, { WatchVideo } from './WatchClient';
+import WatchClient, { type WatchVideo } from './WatchClient';
 
 async function getVideoById(id: string): Promise<WatchVideo | null> {
   try {
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`,
-      { next: { revalidate: 3600 } }
+      `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`,
+      {
+        next: { revalidate: 3600 },
+        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36' },
+      }
     );
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data || !data.id) return null;
-    return data as WatchVideo;
+    return data && data.id ? (data as WatchVideo) : null;
   } catch {
     return null;
   }
@@ -24,39 +26,34 @@ export async function generateMetadata({
   const { id } = await params;
   const video = await getVideoById(id);
 
-  if (!video || !video.title) {
-    return {
-      title: `Watch HD Video ${id}`,
-      description: 'Watch free HD Desi and adult videos streaming fast on HubTube (XVideos3.cam).',
-      alternates: { canonical: `/watch/${id}` },
-    };
-  }
+  const title = video?.title
+    ? `${video.title} | HubTube - XVideos3 HD`
+    : 'Watch Free HD Desi & Adult Video | HubTube - XVideos3';
 
-  const cleanTitle = video.title.trim();
-  const keywordList = video.keywords
-    ? video.keywords.split(',').map((k) => k.trim()).filter(Boolean)
-    : [];
-  const description = `Watch ${cleanTitle} in full HD on HubTube (XVideos3.cam). Free streaming ${keywordList.slice(0, 6).join(', ')} video.`;
+  const description = video?.title
+    ? `Watch ${video.title} full HD video streaming free on HubTube (XVideos3.cam). Fast HD playback, viral Desi MMS, and Indian porn videos.`
+    : 'Watch free HD Desi porn, viral MMS, and 4K adult videos streaming fast on HubTube (XVideos3.cam).';
+
+  const thumb = video?.default_thumb?.src;
 
   return {
-    title: cleanTitle,
+    title,
     description,
-    keywords: [...keywordList, 'desi videos', 'hd porn', 'hubtube', 'xvideos3'],
     alternates: {
       canonical: `/watch/${id}`,
     },
     openGraph: {
       type: 'video.other',
-      url: `https://xvideos3.cam/watch/${id}`,
-      title: `${cleanTitle} - HubTube HD`,
+      title,
       description,
-      images: video.default_thumb?.src ? [{ url: video.default_thumb.src }] : undefined,
+      url: `https://xvideos3.cam/watch/${id}`,
+      ...(thumb ? { images: [{ url: thumb }] } : {}),
     },
     twitter: {
       card: 'summary_large_image',
-      title: cleanTitle,
+      title,
       description,
-      images: video.default_thumb?.src ? [video.default_thumb.src] : undefined,
+      ...(thumb ? { images: [thumb] } : {}),
     },
   };
 }
@@ -69,9 +66,9 @@ export default async function WatchPage({
   const { id } = await params;
   const video = await getVideoById(id);
 
-  const durationIso = video
-    ? `PT${video.length_min || 0}M${video.length_sec || 0}S`
-    : undefined;
+  const durationSeconds =
+    (video?.length_min || 0) * 60 + (video?.length_sec || 0);
+  const durationIso = `PT${Math.max(1, durationSeconds)}S`;
 
   const videoSchema = video
     ? {
