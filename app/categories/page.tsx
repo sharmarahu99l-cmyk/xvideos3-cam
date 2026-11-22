@@ -101,7 +101,7 @@ function enqueueCatFetch<T>(task: () => Promise<T>): Promise<T> {
         });
     };
 
-    if (activeCatFetches < 3) {
+    if (activeCatFetches < 5) {
       run();
     } else {
       catQueue.push(run);
@@ -109,49 +109,28 @@ function enqueueCatFetch<T>(task: () => Promise<T>): Promise<T> {
   });
 }
 
-async function fetchCategoryThumb(cat: Category): Promise<string | null> {
-  const cacheKey = `cat_thumb_v2_${cat.name}`;
-  try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      usedThumbs.add(cached);
-      return cached;
-    }
-  } catch {}
-
+async function fetchCategoryThumbs(cat: Category): Promise<string[]> {
   const searchTerm = cat.query || cat.name;
-
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
   try {
-    const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=8&thumbsize=big&order=top-rated&format=json`
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.videos) && data.videos.length > 0) {
-        const uniqueVideo =
-          data.videos.find(
-            (v: { default_thumb?: { src?: string } }) =>
-              v.default_thumb?.src && !usedThumbs.has(v.default_thumb.src)
-          ) || data.videos[0];
-
-        const imgUrl: string | null = uniqueVideo?.default_thumb?.src || null;
-        if (imgUrl) {
-          usedThumbs.add(imgUrl);
-          try {
-            sessionStorage.setItem(cacheKey, imgUrl);
-          } catch {}
-          return imgUrl;
-        }
-      }
-    }
-  } catch {}
-
-  return null;
+    const res = await fetch(`/api/thumb?q=${encodeURIComponent(searchTerm)}&type=category`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const data: { thumbs?: string[] } = await res.json();
+    return Array.isArray(data.thumbs) ? data.thumbs : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function CategoryCard({ cat }: { cat: Category }) {
-  const [imgSrc, setImgSrc] = useState<string | null>(null);
-  const [failed, setFailed] = useState<boolean>(false);
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [idx, setIdx] = useState<number>(0);
+  const [done, setDone] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -163,7 +142,7 @@ function CategoryCard({ cat }: { cat: Category }) {
           observer.disconnect();
         }
       },
-      { rootMargin: '200px' }
+      { rootMargin: '300px' }
     );
 
     if (cardRef.current) observer.observe(cardRef.current);
@@ -171,67 +150,3 @@ function CategoryCard({ cat }: { cat: Category }) {
   }, []);
 
   useEffect(() => {
-    if (!isVisible) return;
-    let active = true;
-
-    enqueueCatFetch(() => fetchCategoryThumb(cat)).then((url) => {
-      if (!active) return;
-      if (url) {
-        setImgSrc(url);
-      } else {
-        setFailed(true);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [isVisible, cat]);
-
-  return (
-    <div ref={cardRef}>
-      <Link href={`/?q=${encodeURIComponent(cat.name)}`} className="block group">
-        <div className="relative rounded-3xl overflow-hidden aspect-square bg-[#1a1a1a]">
-          {imgSrc && !failed ? (
-            <img
-              src={imgSrc}
-              alt={cat.name}
-              loading="lazy"
-              onError={() => setFailed(true)}
-              className="w-full h-full object-cover transition-transform group-hover:scale-105"
-            />
-          ) : failed ? (
-            <div className="w-full h-full bg-gradient-to-br from-[#262626] to-[#111] flex items-center justify-center text-3xl font-bold text-[#FF9900]/70">
-              {cat.name.charAt(0)}
-            </div>
-          ) : (
-            <div className="w-full h-full bg-[#222] animate-pulse" />
-          )}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-            <p className="text-white text-center font-semibold text-lg">{cat.name}</p>
-            <p className="text-[#FF9900] text-center text-sm mt-1">{cat.count} Videos</p>
-          </div>
-        </div>
-      </Link>
-    </div>
-  );
-}
-
-export default function CategoriesPage() {
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      <header className="bg-[#111] p-4 flex items-center justify-between sticky top-0 z-50">
-        <button onClick={() => window.history.back()} className="text-3xl text-[#FF9900]">←</button>
-        <h1 className="text-2xl font-bold text-[#FF9900]">Categories</h1>
-      </header>
-
-      <div className="p-4">
-        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-          {categoriesList.map((cat) => (
-            <CategoryCard key={cat.name} cat={cat} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
