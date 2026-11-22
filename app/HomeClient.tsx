@@ -3,7 +3,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import JuicyBanner from './JuicyBanner';
 import VideoCard from './VideoCard';
+import JuicyBanner from './JuicyBanner';
 import {
   StoredVideo,
   trackUserInterest,

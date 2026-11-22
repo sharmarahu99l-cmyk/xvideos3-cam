@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from '../../VideoCard';
+import JuicyBanner from '../../JuicyBanner';
 import {
   recordWatchedVideo,
   getTopPreferences,
@@ -581,6 +582,7 @@ export default function WatchClient({
             <span className="text-white">UBE</span>
           </div>
         </div>
+<JuicyBanner />
 
         {/* Real Unique Video Title & Description */}
         {video && (
