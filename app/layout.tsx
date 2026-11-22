@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import GlobalUI from "./GlobalUl";
+import GlobalUI from "./GlobalUI";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://xvideos3.cam"),
@@ -54,6 +54,7 @@ export const metadata: Metadata = {
   other: {
     rating: "adult",
     "RTA-5042-1996-1400-1577-RTA": "RTA",
+    "juicyads-site-verification": "33f53b49382ab3ecf8eef01eca5dee29",
   },
 };
 
