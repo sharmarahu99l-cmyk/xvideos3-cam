@@ -696,7 +696,7 @@ export default function HomeClient() {
             </div>
           </section>
         )}
-
+<JuicyBanner adzone={1133788} width={308} height={286} />
         {/* Similar Videos You May Also Like */}
         {!loading && similarVideos.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
@@ -720,7 +720,7 @@ export default function HomeClient() {
             </div>
           </section>
         )}
-
+<JuicyBanner adzone={1133788} width={308} height={286} />
         {/* Recently Watched */}
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
