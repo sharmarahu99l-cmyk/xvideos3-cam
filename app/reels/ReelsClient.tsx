@@ -13,13 +13,13 @@ export interface ReelVideo {
   keywords?: string;
 }
 
-const FOR_YOU_KEY = '__for_you_desi__';
+const FOR_YOU_KEY = '__for_you_desi_mms__';
 
 const REEL_CATEGORIES = [
-  { label: '🔥 For You', query: FOR_YOU_KEY },
-  { label: 'Viral MMS', query: 'viral desi' },
-  { label: 'Bhabhi', query: 'desi bhabhi' },
-  { label: 'Aunty', query: 'desi aunty' },
+  { label: '🔥 For You (Desi MMS)', query: FOR_YOU_KEY },
+  { label: 'Desi Bhabhi', query: 'desi bhabhi' },
+  { label: 'Desi Aunty', query: 'desi aunty' },
+  { label: 'Indian Homemade', query: 'indian homemade' },
   { label: 'Amateur', query: 'amateur' },
   { label: '4K HD', query: '4k' },
   { label: 'Big Tits', query: 'big tits' },
@@ -28,15 +28,6 @@ const REEL_CATEGORIES = [
 ];
 
 const LIKES_KEY = 'hubtube_reel_likes_v1';
-
-function parseViews(views?: string | number): number {
-  if (typeof views === 'number') return views;
-  if (typeof views === 'string') {
-    const num = Number(views.replace(/[^0-9]/g, ''));
-    return Number.isNaN(num) ? 0 : num;
-  }
-  return 0;
-}
 
 function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
   const totalSecs = Number(lengthSec);
@@ -68,11 +59,12 @@ async function fetchSingleOrder(
   query: string,
   pageNum: number,
   perPage: number,
-  order: 'top-weekly' | 'most-popular'
+  order: 'top-weekly' | 'latest' | 'most-popular'
 ): Promise<ReelVideo[]> {
   try {
     const res = await fetch(
-      `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${order}`
+      `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${order}`,
+      { cache: 'no-store' }
     );
     if (res.ok) {
       const data = await res.json();
@@ -84,7 +76,8 @@ async function fetchSingleOrder(
 
   try {
     const direct = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${order}&lq=0&thumbsize=big&format=json`
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${order}&lq=0&thumbsize=big&format=json`,
+      { cache: 'no-store' }
     );
     if (direct.ok) {
       const data = await direct.json();
@@ -96,31 +89,30 @@ async function fetchSingleOrder(
 }
 
 async function fetchReelBatch(categoryQuery: string, pageNum: number): Promise<ReelVideo[]> {
-  // For You = Trending Desi Videos (top-weekly + most-popular)
+  // For You = Auto-updating Desi MMS (top-weekly + latest + most-popular)
   if (categoryQuery === FOR_YOU_KEY) {
-    const [trendingWeekly, mostPopular] = await Promise.all([
-      fetchSingleOrder('desi', pageNum, 15, 'top-weekly'),
-      fetchSingleOrder('desi', pageNum, 15, 'most-popular'),
+    const [weekly, latest, popular] = await Promise.all([
+      fetchSingleOrder('desi mms', pageNum, 12, 'top-weekly'),
+      fetchSingleOrder('desi mms', pageNum, 12, 'latest'),
+      fetchSingleOrder('desi mms', pageNum, 12, 'most-popular'),
     ]);
 
     const merged: ReelVideo[] = [];
     const seen = new Set<string>();
-    const maxLen = Math.max(trendingWeekly.length, mostPopular.length);
+    const maxLen = Math.max(weekly.length, latest.length, popular.length);
 
     for (let i = 0; i < maxLen; i++) {
-      for (const item of [trendingWeekly[i], mostPopular[i]]) {
+      for (const item of [weekly[i], latest[i], popular[i]]) {
         if (item && !seen.has(item.id)) {
           seen.add(item.id);
           merged.push(item);
         }
       }
     }
-
-    return merged.sort((a, b) => parseViews(b.views) - parseViews(a.views));
+    return merged;
   }
 
-  const list = await fetchSingleOrder(categoryQuery, pageNum, 20, 'most-popular');
-  return list.sort((a, b) => parseViews(b.views) - parseViews(a.views));
+  return fetchSingleOrder(categoryQuery, pageNum, 20, 'most-popular');
 }
 
 export default function ReelsClient({ initialVideos }: { initialVideos: ReelVideo[] }) {
@@ -154,6 +146,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   }, [activeCategory, videos.length]);
 
+  // Mount only the active reel when scrolling into view
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -182,6 +175,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
+  // Infinite scroll: auto-loads next batch of Desi MMS reels
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -271,12 +265,12 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
-      {/* Top Floating Header + Category Switcher */}
-      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/60 to-transparent pt-3 pb-4 px-3 pointer-events-none">
+      {/* Floating Top Bar + Category Switcher */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/85 via-black/45 to-transparent pt-3 pb-5 px-3 pointer-events-none">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
             href="/"
-            className="flex items-center gap-1.5 bg-black/65 hover:bg-[#FF9900] hover:text-black text-white px-3.5 py-1.5 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
+            className="flex items-center gap-1.5 bg-black/60 hover:bg-[#FF9900] hover:text-black text-white px-3.5 py-1.5 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
           >
             <span>←</span>
             <span>HOME</span>
@@ -290,7 +284,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           <Link
             href="/history"
-            className="bg-black/65 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1.5 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
+            className="bg-black/60 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1.5 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
           >
             🕒 History
           </Link>
@@ -320,11 +314,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         </div>
       )}
 
-      {/* Vertical Snap-Scrolling Feed */}
+      {/* Full-Screen 100dvh Vertical Reels Feed */}
       {loading ? (
         <div className="h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-black">
           <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-gray-400">Loading Trending Desi Reels...</p>
+          <p className="text-sm font-bold text-gray-400">Loading Desi MMS Reels...</p>
         </div>
       ) : (
         <div
@@ -345,62 +339,43 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 }}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
               >
-                {/* Ambient Full-Screen Blurred Backdrop */}
-                <img
-                  src={v.default_thumb.src}
-                  alt=""
-                  aria-hidden="true"
-                  className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-35 pointer-events-none"
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/25 to-black/90 pointer-events-none" />
+                {/* Full-Screen Vertical Reel Viewport */}
+                <div className="relative h-[100dvh] w-full sm:max-w-[460px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                  {/* Full-Bleed Thumbnail while scrolling */}
+                  <img
+                    src={v.default_thumb.src}
+                    alt={v.title}
+                    loading={idx <= 1 ? 'eager' : 'lazy'}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
 
-                {/* Reel Column (Full width on mobile, phone-width on desktop) */}
-                <div className="relative z-10 h-[100dvh] w-full sm:max-w-[460px] flex flex-col justify-between pt-28 pb-5 px-0 sm:px-2">
-                  {/* Video Player with Full Draggable Timeline/Seek Bar Visible */}
-                  <div className="flex-1 flex items-center justify-center">
-                    <div className="relative w-full h-[64dvh] sm:h-[68dvh] bg-black sm:rounded-2xl overflow-hidden border-y sm:border border-white/15 shadow-2xl">
-                      {isActive ? (
-                        <iframe
-                          key={`reel-frame-${v.id}`}
-                          src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`}
-                          className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
-                          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                          allowFullScreen
-                        />
-                      ) : (
-                        <img
-                          src={v.default_thumb.src}
-                          alt={v.title}
-                          loading={idx <= 1 ? 'eager' : 'lazy'}
-                          className="w-full h-full object-cover"
-                        />
-                      )}
+                  {/* Full-Screen Reel Player: Top title cropped, Bottom Draggable Seek Bar 100% Visible */}
+                  {isActive && (
+                    <div className="absolute inset-0 bg-black z-10 overflow-hidden">
+                      <iframe
+                        key={`reel-frame-${v.id}`}
+                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`}
+                        className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
+                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                        allowFullScreen
+                      />
+                      {/* Covers only "Hosted by EPORNER COM" at very bottom center without blocking the draggable seek bar above it */}
+                      <div
+                        aria-hidden="true"
+                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-10 min-w-[170px] sm:min-w-[200px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
+                      >
+                        <span className="text-xs font-black text-[#FF9900]">H</span>
+                        <span className="text-xs font-black text-white">UB</span>
+                        <span className="text-xs font-black text-[#FF9900]">REELS</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Bottom Info Bar (Sits cleanly below the player so seek bar is never blocked) */}
-                  <div className="px-4 pr-16 pt-3">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
-                        {activeCategory === FOR_YOU_KEY ? '🔥 TRENDING DESI' : 'HUBREELS'}
-                      </span>
-                      <span className="bg-black/75 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
-                        ⏱ {duration}
-                      </span>
-                      {v.views !== undefined && (
-                        <span className="text-xs text-gray-200 font-semibold">
-                          👁 {v.views}
-                        </span>
-                      )}
-                    </div>
+                  {/* Subtle Top Gradient (leaves seek bar at bottom completely clear) */}
+                  <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
 
-                    <h2 className="text-white text-sm sm:text-base font-bold line-clamp-2 leading-snug">
-                      {v.title}
-                    </h2>
-                  </div>
-
-                  {/* Right-Side Action Rail */}
-                  <div className="absolute right-3 bottom-24 z-30 flex flex-col items-center gap-3.5">
+                  {/* Right-Side Instagram-Style Action Rail */}
+                  <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3.5">
                     <button
                       type="button"
                       onClick={() => toggleLike(v.id)}
@@ -411,7 +386,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isLiked
                             ? 'bg-red-500 border-red-400 text-white scale-110'
-                            : 'bg-black/65 border-white/20 text-white group-hover:border-[#FF9900]'
+                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -427,7 +402,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       href={`/watch/${v.id}`}
                       className="flex flex-col items-center gap-1 group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-black/65 border border-white/20 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
+                      <div className="w-10 h-10 rounded-full bg-black/60 border border-white/20 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
                           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
                         </svg>
@@ -441,7 +416,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       aria-label="Share reel"
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-black/65 border border-white/20 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                      <div className="w-10 h-10 rounded-full bg-black/60 border border-white/20 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
                           <circle cx="18" cy="5" r="3" />
                           <circle cx="6" cy="12" r="3" />
@@ -473,6 +448,27 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </button>
                     </div>
                   </div>
+
+                  {/* Floating Reel Title (Positioned above the seek bar so dragging works cleanly) */}
+                  <div className="absolute bottom-16 left-3 right-16 z-30 pointer-events-none">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
+                        {activeCategory === FOR_YOU_KEY ? '🔥 DESI MMS' : 'HUBREELS'}
+                      </span>
+                      <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
+                        ⏱ {duration}
+                      </span>
+                      {v.views !== undefined && (
+                        <span className="text-xs text-gray-200 font-semibold drop-shadow">
+                          👁 {v.views}
+                        </span>
+                      )}
+                    </div>
+
+                    <h2 className="text-white text-sm font-bold line-clamp-2 drop-shadow-md leading-snug">
+                      {v.title}
+                    </h2>
+                  </div>
                 </div>
               </section>
             );
@@ -480,7 +476,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           {loadingMore && (
             <div className="h-24 flex items-center justify-center bg-black text-xs font-bold text-[#FF9900]">
-              Loading more trending desi reels...
+              Loading more Desi MMS reels...
             </div>
           )}
         </div>
