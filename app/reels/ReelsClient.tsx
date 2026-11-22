@@ -13,13 +13,13 @@ export interface ReelVideo {
   keywords?: string;
 }
 
-const FOR_YOU_KEY = '__for_you_desi_mms__';
+const FOR_YOU_KEY = '__for_you_mms__';
 
 const REEL_CATEGORIES = [
-  { label: '🔥 For You (Desi MMS)', query: FOR_YOU_KEY },
-  { label: 'Desi Bhabhi', query: 'desi bhabhi' },
-  { label: 'Desi Aunty', query: 'desi aunty' },
-  { label: 'Indian Homemade', query: 'indian homemade' },
+  { label: '🔥 For You (MMS)', query: FOR_YOU_KEY },
+  { label: 'Desi', query: 'desi' },
+  { label: 'Bhabhi', query: 'bhabhi' },
+  { label: 'Homemade', query: 'homemade' },
   { label: 'Amateur', query: 'amateur' },
   { label: '4K HD', query: '4k' },
   { label: 'Big Tits', query: 'big tits' },
@@ -89,12 +89,11 @@ async function fetchSingleOrder(
 }
 
 async function fetchReelBatch(categoryQuery: string, pageNum: number): Promise<ReelVideo[]> {
-  // For You = Auto-updating Desi MMS (top-weekly + latest + most-popular)
   if (categoryQuery === FOR_YOU_KEY) {
     const [weekly, latest, popular] = await Promise.all([
-      fetchSingleOrder('desi mms', pageNum, 12, 'top-weekly'),
-      fetchSingleOrder('desi mms', pageNum, 12, 'latest'),
-      fetchSingleOrder('desi mms', pageNum, 12, 'most-popular'),
+      fetchSingleOrder('mms', pageNum, 12, 'top-weekly'),
+      fetchSingleOrder('mms', pageNum, 12, 'latest'),
+      fetchSingleOrder('mms', pageNum, 12, 'most-popular'),
     ]);
 
     const merged: ReelVideo[] = [];
@@ -146,7 +145,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   }, [activeCategory, videos.length]);
 
-  // Mount only the active reel when scrolling into view
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -175,7 +173,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
-  // Infinite scroll: auto-loads next batch of Desi MMS reels
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -265,7 +262,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
-      {/* Floating Top Bar + Category Switcher */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/85 via-black/45 to-transparent pt-3 pb-5 px-3 pointer-events-none">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
@@ -314,11 +310,10 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         </div>
       )}
 
-      {/* Full-Screen 100dvh Vertical Reels Feed */}
       {loading ? (
         <div className="h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-black">
           <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-gray-400">Loading Desi MMS Reels...</p>
+          <p className="text-sm font-bold text-gray-400">Loading MMS Reels...</p>
         </div>
       ) : (
         <div
@@ -339,9 +334,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 }}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
               >
-                {/* Full-Screen Vertical Reel Viewport */}
                 <div className="relative h-[100dvh] w-full sm:max-w-[460px] bg-black overflow-hidden sm:border-x sm:border-white/10">
-                  {/* Full-Bleed Thumbnail while scrolling */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
@@ -349,7 +342,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Full-Screen Reel Player: Top title cropped, Bottom Draggable Seek Bar 100% Visible */}
                   {isActive && (
                     <div className="absolute inset-0 bg-black z-10 overflow-hidden">
                       <iframe
@@ -359,7 +351,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                         allowFullScreen
                       />
-                      {/* Covers only "Hosted by EPORNER COM" at very bottom center without blocking the draggable seek bar above it */}
                       <div
                         aria-hidden="true"
                         className="absolute bottom-0 left-1/2 -translate-x-1/2 h-10 min-w-[170px] sm:min-w-[200px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
@@ -371,10 +362,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   )}
 
-                  {/* Subtle Top Gradient (leaves seek bar at bottom completely clear) */}
                   <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
 
-                  {/* Right-Side Instagram-Style Action Rail */}
                   <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3.5">
                     <button
                       type="button"
@@ -449,11 +438,10 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   </div>
 
-                  {/* Floating Reel Title (Positioned above the seek bar so dragging works cleanly) */}
                   <div className="absolute bottom-16 left-3 right-16 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
-                        {activeCategory === FOR_YOU_KEY ? '🔥 DESI MMS' : 'HUBREELS'}
+                        {activeCategory === FOR_YOU_KEY ? '🔥 MMS' : 'HUBREELS'}
                       </span>
                       <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
                         ⏱ {duration}
@@ -476,7 +464,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           {loadingMore && (
             <div className="h-24 flex items-center justify-center bg-black text-xs font-bold text-[#FF9900]">
-              Loading more Desi MMS reels...
+              Loading more MMS reels...
             </div>
           )}
         </div>

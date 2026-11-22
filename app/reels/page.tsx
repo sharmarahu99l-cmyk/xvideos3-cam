@@ -4,9 +4,9 @@ import ReelsClient, { type ReelVideo } from './ReelsClient';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'HubTube Reels — Trending Desi MMS & Viral Short Videos | XVideos3',
+  title: 'HubTube Reels — Trending MMS & Viral Short Videos | XVideos3',
   description:
-    'Swipe through auto-updating Desi MMS reels, viral Desi videos, and HD clips in full-screen vertical view on HubTube (XVideos3.cam).',
+    'Swipe through auto-updating MMS reels, viral clips, and HD videos in full-screen vertical view on HubTube (XVideos3.cam).',
   alternates: { canonical: '/reels' },
 };
 
@@ -34,10 +34,10 @@ async function getVideoById(id: string): Promise<ReelVideo | null> {
   }
 }
 
-async function fetchDesiMms(order: 'top-weekly' | 'latest' | 'most-popular'): Promise<ReelVideo[]> {
+async function fetchMms(order: 'top-weekly' | 'latest' | 'most-popular'): Promise<ReelVideo[]> {
   try {
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=desi%20mms&per_page=15&page=1&order=${order}&lq=0&thumbsize=big&format=json`,
+      `https://www.eporner.com/api/v2/video/search/?query=mms&per_page=15&page=1&order=${order}&lq=0&thumbsize=big&format=json`,
       { next: { revalidate: 300 }, headers: FETCH_HEADERS }
     );
     if (!res.ok) return [];
@@ -52,12 +52,11 @@ async function fetchDesiMms(order: 'top-weekly' | 'latest' | 'most-popular'): Pr
 async function getInitialReels(startId?: string): Promise<ReelVideo[]> {
   const [startVideo, weekly, latest, popular] = await Promise.all([
     startId ? getVideoById(startId) : Promise.resolve(null),
-    fetchDesiMms('top-weekly'),
-    fetchDesiMms('latest'),
-    fetchDesiMms('most-popular'),
+    fetchMms('top-weekly'),
+    fetchMms('latest'),
+    fetchMms('most-popular'),
   ]);
 
-  // Interleave trending + newest + most-popular Desi MMS so the feed stays fresh automatically
   const combined: ReelVideo[] = [];
   const seen = new Set<string>();
   const maxLen = Math.max(weekly.length, latest.length, popular.length);
