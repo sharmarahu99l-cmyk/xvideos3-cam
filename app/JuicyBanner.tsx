@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 
 declare global {
   interface Window {
     adsbyjuicy?: Array<Record<string, unknown>>;
+    __juicyReloadTimer?: ReturnType<typeof setTimeout>;
   }
 }
 
@@ -14,34 +16,35 @@ interface JuicyBannerProps {
   height?: number;
 }
 
+function triggerJuicyScriptReload() {
+  if (typeof window === 'undefined') return;
+
+  if (window.__juicyReloadTimer) {
+    clearTimeout(window.__juicyReloadTimer);
+  }
+
+  window.__juicyReloadTimer = setTimeout(() => {
+    const oldScripts = document.querySelectorAll('script[src*="poweredby.jads.co/js/jads.js"]');
+    oldScripts.forEach((s) => s.remove());
+
+    const script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.async = true;
+    script.setAttribute('data-cfasync', 'false');
+    script.src = 'https://poweredby.jads.co/js/jads.js';
+    document.body.appendChild(script);
+  }, 150);
+}
+
 export default function JuicyBanner({
   adzone = 1133782,
   width = 468,
   height = 60,
 }: JuicyBannerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '200px' }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -53,24 +56,17 @@ export default function JuicyBanner({
     ins.setAttribute('data-height', String(height));
     container.appendChild(ins);
 
-    if (!document.querySelector('script[src="https://poweredby.jads.co/js/jads.js"]')) {
-      const script = document.createElement('script');
-      script.type = 'text/javascript';
-      script.async = true;
-      script.setAttribute('data-cfasync', 'false');
-      script.src = 'https://poweredby.jads.co/js/jads.js';
-      document.body.appendChild(script);
-    }
-
     window.adsbyjuicy = window.adsbyjuicy || [];
     window.adsbyjuicy.push({ adzone });
-  }, [visible, adzone, width, height]);
+
+    triggerJuicyScriptReload();
+  }, [adzone, width, height, pathname]);
 
   return (
     <div className="w-full flex justify-center items-center my-4 overflow-x-auto">
       <div
         ref={containerRef}
-        style={{ minHeight: `${height}px` }}
+        style={{ minWidth: `${width}px`, minHeight: `${height}px` }}
         className="flex justify-center items-center"
       />
     </div>
