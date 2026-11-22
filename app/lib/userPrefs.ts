@@ -2,7 +2,7 @@ export interface StoredVideo {
   id: string;
   title: string;
   default_thumb: { src: string };
-  thumbs?: Array<{ src: string; width?: number; height?: number }>;
+  thumbs?: Array<{ src?: string; width?: number; height?: number }>;
   length_min: number;
   length_sec: number;
   embed?: string;
@@ -15,7 +15,7 @@ export interface ContentContext {
   type: 'pornstar' | 'desi' | 'category';
   primarySubject: string;
   similarQuery: string;
-  relatedPeerQuery: string;
+  peerQueries: string[];
 }
 
 const PREFS_KEY = 'hubtube_user_prefs_v1';
@@ -63,6 +63,12 @@ function hashText(input: string): number {
   return Math.abs(h);
 }
 
+function rotateArray<T>(arr: T[], offset: number): T[] {
+  if (arr.length === 0) return [];
+  const shift = ((offset % arr.length) + arr.length) % arr.length;
+  return [...arr.slice(shift), ...arr.slice(0, shift)];
+}
+
 export function resolveContentContext(
   titleOrQuery: string,
   keywords: string = '',
@@ -71,52 +77,49 @@ export function resolveContentContext(
   const combined = `${titleOrQuery} ${keywords}`.toLowerCase();
   const seed = hashText(combined) + seedOffset;
 
-  // 1. Check if a known pornstar is in the title, query, or tags
+  // 1. Pornstar match -> Similar shows ONLY that pornstar; Picked For You shows OTHER peer pornstars
   for (const group of PORNSTAR_GROUPS) {
     const matchedStar = group.find((star) => combined.includes(star.toLowerCase()));
     if (matchedStar) {
       const otherStars = group.filter((s) => s.toLowerCase() !== matchedStar.toLowerCase());
-      const peerStar = otherStars[seed % otherStars.length] || 'Angela White';
       return {
         type: 'pornstar',
         primarySubject: matchedStar,
         similarQuery: matchedStar,
-        relatedPeerQuery: peerStar,
+        peerQueries: rotateArray(otherStars, seed).slice(0, 3),
       };
     }
   }
 
-  // 2. Check Desi sub-niches so Desi queries stay logically grouped
+  // 2. Desi sub-niche match
   for (const cluster of DESI_CLUSTERS) {
     const matchedDesi = cluster.find((term) => combined.includes(term));
     if (matchedDesi) {
       const peers = cluster.filter((t) => t !== matchedDesi);
-      const peerDesi = peers[seed % peers.length] || 'desi bhabhi';
       return {
         type: 'desi',
         primarySubject: matchedDesi,
         similarQuery: matchedDesi,
-        relatedPeerQuery: peerDesi,
+        peerQueries: rotateArray(peers, seed).slice(0, 3),
       };
     }
   }
 
-  // 3. Check general categories so related categories pair logically
+  // 3. Category match
   for (const cluster of CATEGORY_CLUSTERS) {
     const matchedCat = cluster.find((term) => combined.includes(term));
     if (matchedCat) {
       const peers = cluster.filter((t) => t !== matchedCat);
-      const peerCat = peers[seed % peers.length] || 'amateur';
       return {
         type: 'category',
         primarySubject: matchedCat,
         similarQuery: matchedCat,
-        relatedPeerQuery: peerCat,
+        peerQueries: rotateArray(peers, seed).slice(0, 3),
       };
     }
   }
 
-  // 4. Extract meaningful keywords from the video title or user search
+  // 4. Fallback keyword extraction
   const words = titleOrQuery
     .replace(/[^a-zA-Z0-9\s]/g, ' ')
     .split(/\s+/)
@@ -133,15 +136,16 @@ export function resolveContentContext(
       : words[0] || tagWords[0] || 'desi bhabhi';
 
   const fallbackPool = ['desi bhabhi', 'indian aunty', 'desi homemade', 'hindi audio', 'pakistani mms'];
-  const peer =
-    tagWords.find((t) => t.toLowerCase() !== primary.toLowerCase()) ||
-    fallbackPool[seed % fallbackPool.length];
+  const peers = [
+    ...tagWords.filter((t) => t.toLowerCase() !== primary.toLowerCase()),
+    ...fallbackPool.filter((t) => t.toLowerCase() !== primary.toLowerCase()),
+  ];
 
   return {
     type: combined.includes('desi') || combined.includes('indian') ? 'desi' : 'category',
     primarySubject: primary,
     similarQuery: primary,
-    relatedPeerQuery: peer,
+    peerQueries: rotateArray(peers, seed).slice(0, 3),
   };
 }
 
@@ -157,9 +161,7 @@ export function trackUserInterest(terms: string[]): void {
       }
     }
     localStorage.setItem(PREFS_KEY, JSON.stringify(map));
-  } catch {
-    // Ignore storage errors
-  }
+  } catch {}
 }
 
 export function getTopPreferences(limit: number = 5): string[] {
@@ -181,16 +183,12 @@ export function recordWatchedVideo(video: StoredVideo): void {
   if (typeof window === 'undefined' || !video?.id) return;
   try {
     const ctx = resolveContentContext(video.title || '', video.keywords || '');
-    trackUserInterest([ctx.primarySubject, ctx.relatedPeerQuery]);
-
+    trackUserInterest([ctx.primarySubject, ...(ctx.peerQueries.slice(0, 1))]);
     const raw = localStorage.getItem(HISTORY_KEY);
     const list: StoredVideo[] = raw ? JSON.parse(raw) : [];
     const filtered = list.filter((item) => item.id !== video.id);
-    const updated = [video, ...filtered].slice(0, 20);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-  } catch {
-    // Ignore storage errors
-  }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify([video, ...filtered].slice(0, 20)));
+  } catch {}
 }
 
 export function getWatchHistory(limit: number = 5): StoredVideo[] {

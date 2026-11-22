@@ -197,7 +197,7 @@ export default function HomeClient({
   const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
   const [forYouVideos, setForYouVideos] = useState<Video[]>([]);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
-  const [recHeading, setRecHeading] = useState<string>('Recommended For You');
+  const [recHeading, setRecHeading] = useState<string>('Picked For You');
   const [simHeading, setSimHeading] = useState<string>('Similar Videos You May Also Like');
   const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
@@ -239,10 +239,10 @@ export default function HomeClient({
 
       if (ctx.type === 'pornstar') {
         setSimHeading(`More ${ctx.primarySubject} Videos`);
-        setRecHeading(`Recommended For You • ${ctx.relatedPeerQuery}`);
+        setRecHeading(`Picked For You • Other Top Pornstars (${ctx.peerQueries.slice(0, 2).join(', ')})`);
       } else {
         setSimHeading(`Similar ${ctx.primarySubject} Videos`);
-        setRecHeading(`Recommended For You • ${ctx.relatedPeerQuery}`);
+        setRecHeading(`Picked For You • ${ctx.peerQueries.slice(0, 2).join(' & ')}`);
       }
 
       setRecentHistory(getWatchHistory(5).filter(validThumb));
@@ -254,12 +254,14 @@ export default function HomeClient({
         setLoading(true);
       }
 
-      const [fetchedMain, similar, personalized] = await Promise.all([
+      const peerList = ctx.peerQueries.length > 0 ? ctx.peerQueries : ['desi bhabhi', 'indian aunty'];
+
+      const [fetchedMain, similar, ...peerBatches] = await Promise.all([
         usingSSRMain
           ? Promise.resolve(validInitial)
           : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
         fetchVideos(ctx.similarQuery, urlPage + 2, 18, 'top-rated'),
-        fetchVideos(ctx.relatedPeerQuery, urlPage, 18, 'most_viewed'),
+        ...peerList.slice(0, 2).map((peerTerm) => fetchVideos(peerTerm, urlPage, 12, 'most_viewed')),
       ]);
 
       if (!active) return;
@@ -273,25 +275,44 @@ export default function HomeClient({
         }
       }
 
+      const strictSim =
+        ctx.type === 'pornstar'
+          ? [
+              ...similar.filter((v) =>
+                `${v.title} ${v.keywords || ''}`.toLowerCase().includes(ctx.primarySubject.toLowerCase())
+              ),
+              ...similar,
+            ]
+          : similar;
+
       const uniqueSimilar: Video[] = [];
-      for (const v of similar) {
+      for (const v of strictSim) {
         if (validThumb(v) && !seenIds.has(v.id)) {
           seenIds.add(v.id);
           uniqueSimilar.push(v);
         }
       }
 
-      const uniqueForYou: Video[] = [];
-      for (const v of personalized) {
-        if (validThumb(v) && !seenIds.has(v.id)) {
-          seenIds.add(v.id);
-          uniqueForYou.push(v);
+      const interleavedPeers: Video[] = [];
+      const maxLen = Math.max(0, ...peerBatches.map((b) => b.length));
+      for (let i = 0; i < maxLen; i++) {
+        for (const batch of peerBatches) {
+          if (batch[i]) interleavedPeers.push(batch[i]);
         }
+      }
+
+      const primaryLower = ctx.primarySubject.toLowerCase();
+      const uniqueForYou: Video[] = [];
+      for (const v of interleavedPeers) {
+        if (!validThumb(v) || seenIds.has(v.id)) continue;
+        if (ctx.type === 'pornstar' && v.title.toLowerCase().includes(primaryLower)) continue;
+        seenIds.add(v.id);
+        uniqueForYou.push(v);
       }
 
       setVideos(uniqueMain);
       setSimilarVideos(uniqueSimilar.slice(0, 10));
-      setForYouVideos(uniqueForYou.slice(0, 10));
+      setForYouVideos(uniqueForYou.slice(0, 15));
       setLoading(false);
     };
 
@@ -689,7 +710,7 @@ export default function HomeClient({
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Logically Matched Similar Videos */}
+        {/* Section 1: Exact Match (e.g., Only Angela White if searching Angela White) */}
         {!loading && similarVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
             <div className="flex items-center justify-between mb-6">
@@ -713,7 +734,7 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Logically Paired Peer Pornstars / Sub-Categories */}
+        {/* Section 2: Logically Related Other Pornstars / Sub-Categories */}
         {!loading && forYouVideos.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
             <div className="flex items-center justify-between mb-6">
@@ -737,7 +758,6 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Recently Watched */}
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
             <h2 className="text-2xl font-black text-[#FF9900] mb-6">
@@ -753,7 +773,7 @@ export default function HomeClient({
           </section>
         )}
 
-        {/* Crawlable Desi & Viral Video Keyword Hub */}
+        {/* Desi SEO Tags Hub at the Bottom of the Page */}
         <footer className="mt-16 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories

@@ -7,7 +7,6 @@ import VideoCard from '../../VideoCard';
 import JuicyBanner from '../../JuicyBanner';
 import {
   recordWatchedVideo,
-  getTopPreferences,
   resolveContentContext,
 } from '../../lib/userPrefs';
 
@@ -28,6 +27,16 @@ type SearchHint = {
   label: string;
   type: 'category' | 'pornstar' | 'desi' | 'video';
 };
+
+const SEO_DESI_HUB_LINKS = [
+  'Desi Videos', 'Desi Porn', 'Desi MMS', 'Viral Desi Videos', 'New Desi Videos',
+  'Desi Bhabhi', 'Indian Bhabhi', 'Desi Aunty', 'Indian Aunty', 'Indian Porn',
+  'Pakistani MMS', 'Pakistani Sex', 'Desi Chudai', 'Hindi Audio Sex', 'Punjabi Desi',
+  'Punjabi Kudi', 'Desi Homemade', 'Indian Homemade', 'Desi Couple', 'Desi College Girl',
+  'Desi Village Girl', 'Desi Saree Sex', 'Bhabhi Devar', 'South Indian Desi', 'Tamil Desi',
+  'Telugu Desi', 'Bengali Bhabhi', 'Marathi Bhabhi', 'Gujarati Aunty', 'Mallu Aunty',
+  'Bhojpuri Desi', 'Desi Leaked Scandal', 'Desi Hidden Cam', 'Desi Suhag Raat', 'Indian Wife',
+];
 
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
@@ -83,7 +92,6 @@ export default function WatchClient({
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  // Stop & unload old iframe immediately when switching videos or leaving page
   useEffect(() => {
     return () => {
       if (iframeRef.current) {
@@ -122,9 +130,7 @@ export default function WatchClient({
             return (data as WatchVideo[]).filter(validThumb);
           }
         }
-      } catch {
-        // Fallback directly to Eporner API if internal route is slow
-      }
+      } catch {}
 
       try {
         const direct = await fetch(
@@ -154,23 +160,32 @@ export default function WatchClient({
       if (!append) {
         if (ctx.type === 'pornstar') {
           setSimilarLabel(`More ${ctx.primarySubject} Videos`);
-          setPickedLabel(`Picked For You • Featuring ${ctx.relatedPeerQuery}`);
+          setPickedLabel(`Picked For You • Other Top Pornstars (${ctx.peerQueries.slice(0, 2).join(', ')})`);
         } else {
           setSimilarLabel(`Similar ${ctx.primarySubject} Videos`);
-          setPickedLabel(`Picked For You • ${ctx.relatedPeerQuery}`);
+          setPickedLabel(`Picked For You • ${ctx.peerQueries.slice(0, 2).join(' & ')}`);
         }
       }
 
-      const prefs = getTopPreferences(4);
-      const secondaryQuery =
-        pageNum % 2 === 1
-          ? ctx.relatedPeerQuery
-          : prefs.find((p) => p.toLowerCase() !== ctx.similarQuery.toLowerCase()) || ctx.relatedPeerQuery;
+      const peerList = ctx.peerQueries.length > 0 ? ctx.peerQueries : ['desi bhabhi', 'indian aunty'];
 
-      const [simFetched, recFetched] = await Promise.all([
+      const [simFetched, ...peerBatches] = await Promise.all([
         fetchBatch(ctx.similarQuery, pageNum, 30, 'most_viewed'),
-        append ? Promise.resolve([]) : fetchBatch(secondaryQuery, pageNum, 20, 'top-rated'),
+        ...(append
+          ? []
+          : peerList.slice(0, 2).map((peerTerm) => fetchBatch(peerTerm, pageNum, 12, 'top-rated'))),
       ]);
+
+      // For pornstar queries, keep Similar strictly focused on that pornstar first
+      const strictSim =
+        ctx.type === 'pornstar'
+          ? [
+              ...simFetched.filter((v) =>
+                `${v.title} ${v.keywords || ''}`.toLowerCase().includes(ctx.primarySubject.toLowerCase())
+              ),
+              ...simFetched,
+            ]
+          : simFetched;
 
       if (append) {
         setMoreVideos((prev) => {
@@ -180,7 +195,7 @@ export default function WatchClient({
             ...prev.map((p) => p.id),
           ]);
           const uniqueNew: WatchVideo[] = [];
-          for (const v of simFetched) {
+          for (const v of strictSim) {
             if (validThumb(v) && !seen.has(v.id)) {
               seen.add(v.id);
               uniqueNew.push(v);
@@ -191,7 +206,7 @@ export default function WatchClient({
       } else {
         const seen = new Set<string>([id]);
         const uniqueSim: WatchVideo[] = [];
-        for (const v of simFetched) {
+        for (const v of strictSim) {
           if (validThumb(v) && !seen.has(v.id)) {
             seen.add(v.id);
             uniqueSim.push(v);
@@ -202,14 +217,24 @@ export default function WatchClient({
         setMoreVideos([]);
         setExtraPages(0);
 
-        const uniqueRec: WatchVideo[] = [];
-        for (const v of recFetched) {
-          if (validThumb(v) && !seen.has(v.id)) {
-            seen.add(v.id);
-            uniqueRec.push(v);
+        // Interleave videos from multiple other peer pornstars / sub-niches, excluding current pornstar
+        const interleavedPeers: WatchVideo[] = [];
+        const maxLen = Math.max(0, ...peerBatches.map((b) => b.length));
+        for (let i = 0; i < maxLen; i++) {
+          for (const batch of peerBatches) {
+            if (batch[i]) interleavedPeers.push(batch[i]);
           }
         }
-        setForYouVideos(uniqueRec.slice(0, 10));
+
+        const primaryLower = ctx.primarySubject.toLowerCase();
+        const uniqueRec: WatchVideo[] = [];
+        for (const v of interleavedPeers) {
+          if (!validThumb(v) || seen.has(v.id)) continue;
+          if (ctx.type === 'pornstar' && v.title.toLowerCase().includes(primaryLower)) continue;
+          seen.add(v.id);
+          uniqueRec.push(v);
+        }
+        setForYouVideos(uniqueRec.slice(0, 15));
       }
 
       setLoadingRelated(false);
@@ -368,7 +393,6 @@ export default function WatchClient({
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      {/* HEADER */}
       <header className="bg-[#111] px-4 py-3 border-b border-gray-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <button
@@ -454,7 +478,6 @@ export default function WatchClient({
         </div>
       </header>
 
-      {/* SIDEBAR MENU */}
       {showMenu && (
         <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
           <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
@@ -499,7 +522,6 @@ export default function WatchClient({
         </div>
       )}
 
-      {/* MAIN CONTENT */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div
           key={`player-wrap-${id}`}
@@ -544,7 +566,6 @@ export default function WatchClient({
 
         <JuicyBanner />
 
-        {/* Video Title, Views, Duration, Description & Tags */}
         <div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
           <h1 className="text-white text-2xl md:text-3xl font-black mb-2 leading-snug">
             {video?.title || 'HD Desi & Viral Video Stream'}
@@ -588,7 +609,7 @@ export default function WatchClient({
 
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Similar Videos Matched to Current Pornstar or Niche */}
+        {/* Section 1: Exact Match (e.g., Only Angela White if watching Angela White) */}
         <div id="similar-videos-section" className="mt-10">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-[#FF9900] text-xl md:text-2xl font-bold capitalize">
@@ -626,7 +647,6 @@ export default function WatchClient({
           </div>
         )}
 
-        {/* More Videos + Prev/Next Controls */}
         <div className="mt-10 flex flex-col items-center gap-6">
           <button
             onClick={handleLoadMore}
@@ -656,7 +676,7 @@ export default function WatchClient({
           </div>
         </div>
 
-        {/* Picked For You: Related Peer Pornstars / Sub-Categories */}
+        {/* Section 2: Logically Related Other Pornstars / Sub-Categories */}
         {forYouVideos.length > 0 && (
           <section className="mt-14 pt-8 border-t border-gray-800">
             <h2 className="text-[#FF9900] text-xl md:text-2xl font-bold mb-6 capitalize">
@@ -671,6 +691,28 @@ export default function WatchClient({
             </div>
           </section>
         )}
+
+        {/* Desi SEO Tags Hub at the Bottom of the Page */}
+        <footer className="mt-16 pt-8 border-t border-gray-800">
+          <h2 className="text-lg font-black text-[#FF9900] mb-3">
+            Popular Desi Videos, Viral MMS &amp; HD Categories
+          </h2>
+          <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+            HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {SEO_DESI_HUB_LINKS.map((term) => (
+              <Link
+                key={term}
+                href={`/?q=${encodeURIComponent(term.toLowerCase())}`}
+                onClick={scrollTopNow}
+                className="text-xs bg-[#161616] hover:bg-[#FF9900] hover:text-black text-gray-300 px-3 py-1.5 rounded-full border border-gray-800 transition"
+              >
+                {term}
+              </Link>
+            ))}
+          </div>
+        </footer>
       </div>
     </div>
   );
