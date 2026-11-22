@@ -329,7 +329,7 @@ export default function WatchClient({
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
       <header className="bg-[#111] px-4 py-3 border-b border-gray-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
           <button
             onClick={() => setShowMenu(!showMenu)}
             aria-label="Menu"
@@ -354,12 +354,12 @@ export default function WatchClient({
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Search desi videos, desi mms, bhabhi, pornstars..."
                 autoComplete="off"
-                className="w-full bg-[#222] border-2 border-[#FF9900] text-white pl-5 pr-16 py-2.5 rounded-full outline-none placeholder-gray-400"
+                className="w-full bg-[#222] border-2 border-[#FF9900] text-white pl-4 pr-12 py-2 rounded-full outline-none placeholder-gray-400 text-sm sm:text-base"
               />
               <button
                 type="submit"
                 aria-label="Search"
-                className="absolute right-1.5 bg-[#FF9900] text-black font-bold rounded-full w-9 h-9 flex items-center justify-center hover:bg-[#ffaa33]"
+                className="absolute right-1.5 bg-[#FF9900] text-black font-bold rounded-full w-8 h-8 flex items-center justify-center hover:bg-[#ffaa33]"
               >
                 🔍
               </button>
@@ -404,7 +404,15 @@ export default function WatchClient({
             )}
           </div>
 
-          <Link href="/" onClick={scrollTopNow} className="text-2xl md:text-3xl font-black tracking-tighter shrink-0">
+          <Link
+            href="/reels"
+            className="bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black text-xs md:text-sm px-3 py-1.5 rounded-full flex items-center gap-1 shrink-0 transition"
+          >
+            <span>▶</span>
+            <span>REELS</span>
+          </Link>
+
+          <Link href="/" onClick={scrollTopNow} className="text-xl sm:text-2xl md:text-3xl font-black tracking-tighter shrink-0">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
             <span className="text-[#FF9900]">T</span>
@@ -449,6 +457,7 @@ export default function WatchClient({
             </div>
           )}
           <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
+          <Link href="/reels" onClick={() => setShowMenu(false)} className="px-6 py-4 text-[#FF9900] text-lg font-black flex items-center gap-3 border-b border-gray-700">🎬 REELS (SWIPE)</Link>
           <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
           <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
           <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
