@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import GlobalUI from "./GlobalUI";
+import GlobalUI from "./GlobalUl";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://xvideos3.cam"),
