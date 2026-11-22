@@ -150,3 +150,93 @@ function CategoryCard({ cat }: { cat: Category }) {
   }, []);
 
   useEffect(() => {
+    if (!isVisible) return;
+    let active = true;
+
+    const cacheKey = `cat_thumb_v3_${cat.name}`;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        usedThumbs.add(cached);
+        setCandidates([cached]);
+        setDone(true);
+        return;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
+    enqueueCatFetch(() => fetchCategoryThumbs(cat)).then((thumbs) => {
+      if (!active) return;
+      if (thumbs.length > 0) {
+        // Put unused thumbnails first so categories don't duplicate images
+        const ordered = [
+          ...thumbs.filter((t) => !usedThumbs.has(t)),
+          ...thumbs.filter((t) => usedThumbs.has(t)),
+        ];
+        usedThumbs.add(ordered[0]);
+        setCandidates(ordered);
+        try {
+          sessionStorage.setItem(cacheKey, ordered[0]);
+        } catch {
+          // Ignore storage errors
+        }
+      }
+      setDone(true);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isVisible, cat]);
+
+  const currentImg = candidates[idx];
+
+  return (
+    <div ref={cardRef}>
+      <Link href={`/?q=${encodeURIComponent(cat.name)}`} className="block group">
+        <div className="relative rounded-3xl overflow-hidden aspect-square bg-[#1a1a1a]">
+          {currentImg ? (
+            <img
+              src={currentImg}
+              alt={cat.name}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={() => setIdx((prev) => prev + 1)}
+              className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            />
+          ) : done ? (
+            <div className="w-full h-full bg-gradient-to-br from-[#262626] to-[#111] flex items-center justify-center text-3xl font-bold text-[#FF9900]/70">
+              {cat.name.charAt(0)}
+            </div>
+          ) : (
+            <div className="w-full h-full bg-[#222] animate-pulse" />
+          )}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
+            <p className="text-white text-center font-semibold text-lg">{cat.name}</p>
+            <p className="text-[#FF9900] text-center text-sm mt-1">{cat.count} Videos</p>
+          </div>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+export default function CategoriesPage() {
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
+      <header className="bg-[#111] p-4 flex items-center justify-between sticky top-0 z-50">
+        <button onClick={() => window.history.back()} className="text-3xl text-[#FF9900]">←</button>
+        <h1 className="text-2xl font-bold text-[#FF9900]">Categories</h1>
+      </header>
+
+      <div className="p-4">
+        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+          {categoriesList.map((cat) => (
+            <CategoryCard key={cat.name} cat={cat} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -74,7 +74,70 @@ const pornstarsList: Pornstar[] = [
   { name: "Mick Blue", count: "598 Videos" },
 ];
 
-// Simple queue so we only run 3 requests at a time (prevents API rate-limiting)
+interface WikiPage {
+  title?: string;
+  description?: string;
+  thumbnail?: { source?: string };
+}
+
+interface WikiBatchResponse {
+  query?: {
+    normalized?: Array<{ from: string; to: string }>;
+    redirects?: Array<{ from: string; to: string }>;
+    pages?: Record<string, WikiPage>;
+  };
+}
+
+// Fetch Wikipedia portraits in batches of 35 (only 2 total HTTP requests for all 63 stars)
+async function fetchWikiPortraitsBatch(names: string[]): Promise<Record<string, string>> {
+  const found: Record<string, string> = {};
+  const chunkSize = 35;
+
+  for (let i = 0; i < names.length; i += chunkSize) {
+    const chunk = names.slice(i, i + chunkSize);
+    const titles = chunk.join('|');
+    try {
+      const res = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(titles)}&prop=pageimages|description&piprop=thumbnail&pithumbsize=400&redirects=1&format=json&origin=*`
+      );
+      if (!res.ok) continue;
+      const data: WikiBatchResponse = await res.json();
+      const pages = data.query?.pages || {};
+      const redirectMap: Record<string, string> = {};
+
+      (data.query?.redirects || []).forEach((r) => {
+        redirectMap[r.to] = r.from;
+      });
+
+      Object.values(pages).forEach((page) => {
+        const img = page.thumbnail?.source;
+        if (!img || !page.title) return;
+
+        const desc = (page.description || '').toLowerCase();
+        const isPerformer =
+          !desc ||
+          desc.includes('porn') ||
+          desc.includes('adult') ||
+          desc.includes('erotic') ||
+          desc.includes('actress') ||
+          desc.includes('actor') ||
+          desc.includes('model') ||
+          desc.includes('media personality');
+
+        if (!isPerformer) return;
+
+        const originalName = redirectMap[page.title] || page.title;
+        found[originalName.toLowerCase()] = img;
+        found[page.title.toLowerCase()] = img;
+      });
+    } catch {
+      // Ignore batch error and let fallback API handle missing ones
+    }
+  }
+
+  return found;
+}
+
 let activeStarFetches = 0;
 const starQueue: Array<() => void> = [];
 
@@ -92,7 +155,7 @@ function enqueueStarFetch<T>(task: () => Promise<T>): Promise<T> {
         });
     };
 
-    if (activeStarFetches < 3) {
+    if (activeStarFetches < 5) {
       run();
     } else {
       starQueue.push(run);
@@ -100,68 +163,35 @@ function enqueueStarFetch<T>(task: () => Promise<T>): Promise<T> {
   });
 }
 
-async function fetchRealStarImage(name: string): Promise<string | null> {
-  const cacheKey = `star_thumb_v2_${name}`;
+async function fetchFallbackStarThumbs(name: string): Promise<string[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
   try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) return cached;
-  } catch {}
-
-  let imgUrl: string | null = null;
-
-  // 1. Try Wikipedia REST API for a verified performer portrait
-  try {
-    const wikiRes = await fetch(
-      `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name.replace(/ /g, '_'))}`
-    );
-    if (wikiRes.ok) {
-      const wikiData = await wikiRes.json();
-      const bio = `${wikiData.description || ''} ${wikiData.extract || ''}`.toLowerCase();
-      const isPerformer =
-        bio.includes('porn') ||
-        bio.includes('adult') ||
-        bio.includes('erotic') ||
-        bio.includes('actress') ||
-        bio.includes('actor') ||
-        bio.includes('model');
-
-      if (wikiData.type === 'standard' && isPerformer && wikiData.thumbnail?.source) {
-        imgUrl = wikiData.thumbnail.source as string;
-      }
-    }
-  } catch {}
-
-  // 2. Fallback to Eporner API matched specifically to this performer's name
-  if (!imgUrl) {
-    try {
-      const epRes = await fetch(
-        `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(name)}&per_page=5&thumbsize=big&format=json`
-      );
-      if (epRes.ok) {
-        const epData = await epRes.json();
-        if (Array.isArray(epData.videos) && epData.videos.length > 0) {
-          const exactMatch = epData.videos.find((v: { title?: string }) =>
-            v.title?.toLowerCase().includes(name.toLowerCase())
-          );
-          const chosen = exactMatch || epData.videos[0];
-          imgUrl = chosen?.default_thumb?.src || null;
-        }
-      }
-    } catch {}
+    const res = await fetch(`/api/thumb?q=${encodeURIComponent(name)}&type=star`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const data: { thumbs?: string[] } = await res.json();
+    return Array.isArray(data.thumbs) ? data.thumbs : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (imgUrl) {
-    try {
-      sessionStorage.setItem(cacheKey, imgUrl);
-    } catch {}
-  }
-
-  return imgUrl;
 }
 
-function PornstarCard({ star }: { star: Pornstar }) {
-  const [imgSrc, setImgSrc] = useState<string | null>(null);
-  const [failed, setFailed] = useState<boolean>(false);
+function PornstarCard({
+  star,
+  wikiThumb,
+  wikiReady,
+}: {
+  star: Pornstar;
+  wikiThumb?: string;
+  wikiReady: boolean;
+}) {
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [idx, setIdx] = useState<number>(0);
+  const [done, setDone] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +203,7 @@ function PornstarCard({ star }: { star: Pornstar }) {
           observer.disconnect();
         }
       },
-      { rootMargin: '200px' }
+      { rootMargin: '300px' }
     );
 
     if (cardRef.current) observer.observe(cardRef.current);
@@ -181,36 +211,63 @@ function PornstarCard({ star }: { star: Pornstar }) {
   }, []);
 
   useEffect(() => {
-    if (!isVisible) return;
+    if (wikiThumb) {
+      setCandidates([wikiThumb]);
+      setIdx(0);
+      setDone(true);
+    }
+  }, [wikiThumb]);
+
+  useEffect(() => {
+    if (!isVisible || !wikiReady || wikiThumb) return;
     let active = true;
 
-    enqueueStarFetch(() => fetchRealStarImage(star.name)).then((url) => {
-      if (!active) return;
-      if (url) {
-        setImgSrc(url);
-      } else {
-        setFailed(true);
+    const cacheKey = `star_thumb_v3_${star.name}`;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        setCandidates([cached]);
+        setDone(true);
+        return;
       }
+    } catch {
+      // Ignore storage errors
+    }
+
+    enqueueStarFetch(() => fetchFallbackStarThumbs(star.name)).then((thumbs) => {
+      if (!active) return;
+      if (thumbs.length > 0) {
+        setCandidates(thumbs);
+        try {
+          sessionStorage.setItem(cacheKey, thumbs[0]);
+        } catch {
+          // Ignore storage errors
+        }
+      }
+      setDone(true);
     });
 
     return () => {
       active = false;
     };
-  }, [isVisible, star.name]);
+  }, [isVisible, wikiReady, wikiThumb, star.name]);
+
+  const currentImg = candidates[idx];
 
   return (
     <div ref={cardRef}>
       <Link href={`/?q=${encodeURIComponent(star.name)}`} className="block group">
         <div className="relative overflow-hidden rounded-2xl bg-[#1a1a1a]">
-          {imgSrc && !failed ? (
+          {currentImg ? (
             <img
-              src={imgSrc}
+              src={currentImg}
               alt={star.name}
               loading="lazy"
-              onError={() => setFailed(true)}
+              referrerPolicy="no-referrer"
+              onError={() => setIdx((prev) => prev + 1)}
               className="w-full aspect-[4/3] object-cover object-top group-hover:scale-105 transition"
             />
-          ) : failed ? (
+          ) : done ? (
             <div className="w-full aspect-[4/3] bg-gradient-to-br from-[#262626] to-[#111] flex items-center justify-center text-3xl font-bold text-[#FF9900]/70">
               {star.name.charAt(0)}
             </div>
@@ -228,12 +285,35 @@ function PornstarCard({ star }: { star: Pornstar }) {
 }
 
 export default function PornstarsPage() {
+  const [wikiMap, setWikiMap] = useState<Record<string, string>>({});
+  const [wikiReady, setWikiReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    const allNames = pornstarsList.map((s) => s.name);
+
+    fetchWikiPortraitsBatch(allNames).then((result) => {
+      if (!active) return;
+      setWikiMap(result);
+      setWikiReady(true);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-6">
       <h1 className="text-4xl font-bold text-[#FF9900] mb-8 text-center">PORNSTARS</h1>
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
         {pornstarsList.map((star) => (
-          <PornstarCard key={star.name} star={star} />
+          <PornstarCard
+            key={star.name}
+            star={star}
+            wikiThumb={wikiMap[star.name.toLowerCase()]}
+            wikiReady={wikiReady}
+          />
         ))}
       </div>
     </div>
