@@ -467,6 +467,7 @@ export default function WatchClient({
           poster={video?.default_thumb?.src}
         />
 
+        {/* Banner Ad Below Player */}
         <JuicyBanner />
 
         <div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
@@ -508,6 +509,7 @@ export default function WatchClient({
           )}
         </div>
 
+        {/* Banner Ad Below Video Details */}
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
         {/* Smart Multi-Topic Similar Videos Section */}
@@ -555,13 +557,31 @@ export default function WatchClient({
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {related.map((v) => (
-                <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                  <VideoCard video={v} />
-                </Link>
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                {related.slice(0, 15).map((v) => (
+                  <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
+                    <VideoCard video={v} />
+                  </Link>
+                ))}
+              </div>
+
+              {related.length > 15 && (
+                <>
+                  {/* Mid-Similar Banner Ad */}
+                  <div className="my-8">
+                    <JuicyBanner />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    {related.slice(15).map((v) => (
+                      <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
+                        <VideoCard video={v} />
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
           )}
         </section>
 
@@ -585,7 +605,12 @@ export default function WatchClient({
           </button>
         </div>
 
-        <footer className="mt-16 pt-8 border-t border-gray-800">
+        {/* Pre-Footer Banner Ad */}
+        <div className="mt-10">
+          <JuicyBanner adzone={1133788} width={308} height={286} />
+        </div>
+
+        <footer className="mt-12 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories
           </h2>

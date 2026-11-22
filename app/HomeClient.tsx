@@ -652,6 +652,7 @@ export default function HomeClient({
           )}
         </div>
 
+        {/* Top Banner Ad */}
         <JuicyBanner />
 
         <div className="mt-6">
@@ -666,13 +667,31 @@ export default function HomeClient({
               No results found for &ldquo;{urlQuery}&rdquo;. Try another keyword or page.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {videos.map((v) => (
-                <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                  <VideoCard video={v} />
-                </Link>
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                {videos.slice(0, 15).map((v) => (
+                  <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
+                    <VideoCard video={v} />
+                  </Link>
+                ))}
+              </div>
+
+              {videos.length > 15 && (
+                <>
+                  {/* Mid-Grid Banner Ad */}
+                  <div className="my-8">
+                    <JuicyBanner />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    {videos.slice(15).map((v) => (
+                      <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
+                        <VideoCard video={v} />
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
           )}
         </div>
 
@@ -681,6 +700,7 @@ export default function HomeClient({
           {renderPaginationBar()}
         </div>
 
+        {/* Post-Pagination Ad */}
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
         {/* Smart Multi-Topic Similar Videos Section */}
@@ -761,7 +781,12 @@ export default function HomeClient({
           </section>
         )}
 
-        <footer className="mt-16 pt-8 border-t border-gray-800">
+        {/* Pre-Footer Banner Ad */}
+        <div className="mt-10">
+          <JuicyBanner />
+        </div>
+
+        <footer className="mt-12 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories
           </h2>
