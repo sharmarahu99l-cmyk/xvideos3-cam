@@ -1,59 +1,103 @@
-import React from 'react';
+'use client';
 
-type Video = {
-  id: string;
-  title: string;
-  default_thumb: { src: string };
-  length_min?: number | string;
-  length_sec?: number | string;
-  embed: string;
-  views?: string;
-};
+import { useState, useEffect } from 'react';
 
-export default function VideoCard({ video }: { video: Video }) {
-  const highResThumb = video.default_thumb?.src?.replace('/240.jpg', '/1080.jpg') || video.default_thumb?.src || '';
+interface ThumbItem {
+  src: string;
+  width?: number;
+  height?: number;
+}
 
-  const totalSeconds = (Number(video.length_min) || 0) * 60 + (Number(video.length_sec) || 0);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const duration = hours > 0 
-    ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}` 
-    : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+interface VideoCardProps {
+  video: {
+    id: string;
+    title: string;
+    default_thumb?: { src?: string };
+    thumbs?: ThumbItem[];
+    length_min?: number;
+    length_sec?: number;
+    views?: string | number;
+  };
+}
+
+function getMaxQualityThumb(video: VideoCardProps['video']): {
+  primary: string;
+  fallback: string;
+} {
+  const baseSrc = video.default_thumb?.src?.trim() || '';
+  let bestSrc = baseSrc;
+
+  if (Array.isArray(video.thumbs) && video.thumbs.length > 0) {
+    const sorted = [...video.thumbs]
+      .filter((t) => Boolean(t?.src))
+      .sort((a, b) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0));
+
+    if (sorted[0]?.src) {
+      bestSrc = sorted[0].src.trim();
+    }
+  }
+
+  const upgraded = bestSrc
+    .replace(/\/(small|medium)\//gi, '/big/')
+    .replace(/[_-](small|medium)(\.[a-z]+)$/gi, '_big$2')
+    .replace(/(\d{3,4}x\d{3,4})/gi, '1920x1080');
+
+  return {
+    primary: upgraded || baseSrc,
+    fallback: baseSrc || bestSrc,
+  };
+}
+
+export default function VideoCard({ video }: VideoCardProps) {
+  const { primary, fallback } = getMaxQualityThumb(video);
+  const [imgSrc, setImgSrc] = useState<string>(primary);
+  const [broken, setBroken] = useState<boolean>(!primary && !fallback);
+
+  useEffect(() => {
+    setImgSrc(primary);
+    setBroken(!primary && !fallback);
+  }, [primary, fallback]);
+
+  if (broken || !imgSrc) return null;
+
+  const mins = video.length_min || 0;
+  const secs = String(video.length_sec || 0).padStart(2, '0');
 
   return (
-    <div className="cursor-pointer group relative">
-      <div className="relative aspect-video rounded-2xl overflow-hidden bg-black">
-        
+    <article className="group bg-[#141414] rounded-2xl overflow-hidden border border-gray-800/80 hover:border-[#FF9900] transition duration-200 shadow-lg">
+      <div className="relative w-full aspect-video bg-black overflow-hidden">
         <img
-          src={highResThumb}
+          src={imgSrc}
           alt={video.title}
-          className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110 group-hover:brightness-125"
           loading="lazy"
+          decoding="async"
+          onError={() => {
+            if (fallback && imgSrc !== fallback) {
+              setImgSrc(fallback);
+            } else {
+              setBroken(true);
+            }
+          }}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
 
-        {/* Hover overlay - feels like video preview is playing */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300"></div>
+        <span className="absolute top-2 left-2 bg-black/85 text-[#FF9900] text-[10px] font-black px-2 py-0.5 rounded-md border border-[#FF9900]/40">
+          4K / HD
+        </span>
 
-        {/* Orange HD Tag */}
-        <div className="absolute top-2 right-2 bg-[#FF9900] text-black text-[10px] font-bold px-2 py-0.5 rounded z-20">
-          HD
-        </div>
-
-        {/* Duration */}
-        <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded font-mono z-20">
-          {duration}
-        </div>
-
-        {/* Subtle play animation (feels like preview) */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none">
-          <div className="w-16 h-16 border-4 border-white/40 rounded-full animate-[pulse_1.5s_infinite]"></div>
-        </div>
+        <span className="absolute bottom-2 right-2 bg-black/90 text-white text-xs font-bold px-2 py-0.5 rounded-md">
+          {mins}:{secs}
+        </span>
       </div>
 
-      <p className="text-sm mt-3 line-clamp-2 text-white group-hover:text-[#FF9900]">
-        {video.title}
-      </p>
-    </div>
+      <div className="p-3">
+        <h3 className="text-white text-sm font-bold line-clamp-2 group-hover:text-[#FF9900] transition leading-snug">
+          {video.title}
+        </h3>
+        {video.views !== undefined && video.views !== '' && (
+          <p className="text-xs text-gray-400 mt-1.5">👁️ {video.views} views</p>
+        )}
+      </div>
+    </article>
   );
 }
