@@ -233,7 +233,7 @@ export default function WatchClient({
         if (v.title) {
           document.title = `${v.title} | HubTube - XVideos3 HD`;
         }
-        recordWatchedVideo(v);
+        recordWatchedVideo(v as any);
       }
       loadLogicalSections(v, 1, false);
     };

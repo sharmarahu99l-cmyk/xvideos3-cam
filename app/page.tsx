@@ -1,6 +1,4 @@
-import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import HomeClient from './HomeClient';
 import type { StoredVideo } from './lib/userPrefs';
 
 export async function generateMetadata({
@@ -120,9 +118,35 @@ export default async function HomePage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
         />
       )}
-      <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a]" />}>
-        <HomeClient initialVideos={initialVideos} initialQuery={q} initialPage={page} />
-      </Suspense>
+      <main className="min-h-screen bg-[#0a0a0a] px-4 py-8 text-white">
+        <form action="/" className="mx-auto mb-8 flex max-w-2xl">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search videos"
+            className="min-w-0 flex-1 rounded-l-lg border border-white/20 bg-black px-4 py-3"
+          />
+          <button type="submit" className="rounded-r-lg bg-red-600 px-5 py-3 font-semibold">
+            Search
+          </button>
+        </form>
+
+        <section className="mx-auto grid max-w-6xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {initialVideos.map((video) => (
+            <a
+              key={video.id}
+              href={`/watch/${video.id}`}
+              className="rounded-lg border border-white/10 p-4 hover:border-white/30"
+            >
+              <h2 className="line-clamp-2 font-semibold">{video.title}</h2>
+            </a>
+          ))}
+        </section>
+
+        {initialVideos.length === 0 && (
+          <p className="mx-auto max-w-2xl text-center text-white/60">No videos found.</p>
+        )}
+      </main>
     </>
   );
 }
