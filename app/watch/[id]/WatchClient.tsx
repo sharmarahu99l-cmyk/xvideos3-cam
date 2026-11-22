@@ -22,6 +22,7 @@ export type WatchVideo = {
   embed: string;
   views?: string;
   keywords?: string;
+  added?: string;
 };
 
 function scrollTopNow() {
