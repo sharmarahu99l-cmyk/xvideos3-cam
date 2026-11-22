@@ -9,7 +9,7 @@ import {
   getTopPreferences,
   saveVideoRelatedSnapshot,
   getVideoRelatedSnapshot,
-} from '../../Lib/userPrefs';
+} from '../../lib/userPrefs';
 
 export type WatchVideo = {
   id: string;
@@ -31,28 +31,93 @@ type SearchHint = {
 const STOP_WORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'this', 'that', 'her', 'his', 'she',
   'him', 'you', 'your', 'are', 'was', 'were', 'has', 'have', 'hot', 'free',
-  'video', 'videos', 'full', 'new', 'best', 'xxx', 'porn', 'sex',
+  'video', 'videos', 'full', 'new', 'best', 'xxx', 'porn', 'sex', 'hd', '1080p',
+  '720p', '4k', 'mp4', 'watch', 'online', 'scene', 'clip', 'part',
 ]);
 
-const FALLBACK_TOPICS = ['desi bhabhi', 'indian', 'milf', '4k', 'asian', 'amateur', 'big tits'];
+const FALLBACK_TOPICS = [
+  'desi bhabhi',
+  'indian aunty',
+  'milf',
+  'asian',
+  'amateur',
+  'big tits',
+  'latina',
+  'teen',
+  'pov',
+  'homemade',
+];
 
-function extractRelatedQuery(v: WatchVideo | null): string {
-  if (!v) return 'desi';
-  if (v.keywords) {
-    const tags = v.keywords
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+// Extracts specific keywords from the clicked video's title/tags so every video gets unique related results
+function extractUniqueRelatedQuery(v: WatchVideo | null, videoId: string): string {
+  const candidates: string[] = [];
+
+  if (v?.title) {
+    const titleWords = v.title
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 4 && !STOP_WORDS.has(w.toLowerCase()));
+    candidates.push(...titleWords);
+  }
+
+  if (v?.keywords) {
+    const tagWords = v.keywords
       .split(',')
       .map((t) => t.trim())
       .filter((t) => t.length >= 3 && !STOP_WORDS.has(t.toLowerCase()));
-    if (tags.length > 0) return tags.slice(0, 2).join(' ');
+    candidates.push(...tagWords);
   }
-  if (v.title) {
-    const words = v.title
-      .replace(/[^a-zA-Z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length >= 3 && !STOP_WORDS.has(w.toLowerCase()));
-    if (words.length > 0) return words.slice(0, 3).join(' ');
+
+  // Deduplicate case-insensitively while keeping specific terms first
+  const uniqueTerms: string[] = [];
+  const seen = new Set<string>();
+  for (const term of candidates) {
+    const low = term.toLowerCase();
+    if (!seen.has(low)) {
+      seen.add(low);
+      uniqueTerms.push(term);
+    }
   }
-  return 'desi';
+
+  if (uniqueTerms.length >= 2) {
+    return `${uniqueTerms[0]} ${uniqueTerms[1]}`;
+  }
+  if (uniqueTerms.length === 1) {
+    return uniqueTerms[0];
+  }
+
+  // If video metadata wasn't available, pick a deterministic topic from this video's ID hash
+  const idx = hashString(videoId) % FALLBACK_TOPICS.length;
+  return FALLBACK_TOPICS[idx];
+}
+
+function getGlobalShownIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = sessionStorage.getItem('hubtube_shown_related_ids');
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function addGlobalShownIds(ids: string[]): void {
+  if (typeof window === 'undefined' || ids.length === 0) return;
+  try {
+    const current = Array.from(getGlobalShownIds());
+    const merged = Array.from(new Set([...ids, ...current])).slice(0, 300);
+    sessionStorage.setItem('hubtube_shown_related_ids', JSON.stringify(merged));
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
@@ -81,7 +146,6 @@ export default function WatchClient({
   const [relatedPage, setRelatedPage] = useState<number>(1);
   const [extraPages, setExtraPages] = useState<number>(0);
 
-  // Player container & fullscreen state (keeps HUBTUBE mask active in fullscreen)
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
@@ -110,10 +174,10 @@ export default function WatchClient({
     }
   };
 
-  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 30): Promise<WatchVideo[]> => {
+  const fetchBatch = useCallback(async (query: string, pageNum: number, perPage = 40): Promise<WatchVideo[]> => {
     try {
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}`,
+        `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=top-rated`,
         { cache: 'no-store' }
       );
       if (!res.ok) return [];
@@ -132,6 +196,7 @@ export default function WatchClient({
         setLoadingRelated(true);
       }
 
+      // If user returns to an old video they already watched, restore what they saw before
       if (!append && pageNum === 1) {
         const savedSnapshot = getVideoRelatedSnapshot(id);
         if (savedSnapshot && savedSnapshot.length > 0) {
@@ -143,16 +208,25 @@ export default function WatchClient({
         }
       }
 
-      const query = extractRelatedQuery(targetVideo);
-      const fetched = await fetchBatch(query, pageNum, 30);
-      let filtered = fetched.filter((v) => v.id && v.id !== id);
+      const query = extractUniqueRelatedQuery(targetVideo, id);
+      // Offset API page by video ID hash so even videos with overlapping words show different clips
+      const idOffset = (hashString(id) % 8) + 1;
+      const effectiveApiPage = pageNum === 1 ? idOffset : idOffset + pageNum - 1;
 
-      if (filtered.length < 10) {
+      const fetched = await fetchBatch(query, effectiveApiPage, 40);
+      const previouslyShown = getGlobalShownIds();
+
+      // Prioritize fresh videos not shown on previous watch pages
+      const freshMatches = fetched.filter((v) => v.id && v.id !== id && !previouslyShown.has(v.id));
+      const olderMatches = fetched.filter((v) => v.id && v.id !== id && previouslyShown.has(v.id));
+      let combined = [...freshMatches, ...olderMatches];
+
+      if (combined.length < 15) {
         const prefs = getTopPreferences(5);
         const pool = prefs.length > 0 ? [...prefs, ...FALLBACK_TOPICS] : FALLBACK_TOPICS;
-        const fallbackQuery = pool[pageNum % pool.length];
+        const fallbackQuery = pool[(hashString(id) + pageNum) % pool.length];
         const fallbackBatch = await fetchBatch(fallbackQuery, (pageNum % 15) + 1, 30);
-        filtered = [...filtered, ...fallbackBatch.filter((v) => v.id && v.id !== id)];
+        combined = [...combined, ...fallbackBatch.filter((v) => v.id && v.id !== id)];
       }
 
       if (append) {
@@ -163,28 +237,31 @@ export default function WatchClient({
             ...prev.map((p) => p.id),
           ]);
           const uniqueNew: WatchVideo[] = [];
-          for (const v of filtered) {
+          for (const v of combined) {
             if (!seen.has(v.id)) {
               seen.add(v.id);
               uniqueNew.push(v);
             }
           }
-          return [...prev, ...uniqueNew];
+          addGlobalShownIds(uniqueNew.map((v) => v.id));
+          return [...prev, ...uniqueNew.slice(0, 25)];
         });
       } else {
         const seen = new Set<string>([id]);
         const uniqueRelated: WatchVideo[] = [];
-        for (const v of filtered) {
+        for (const v of combined) {
           if (!seen.has(v.id)) {
             seen.add(v.id);
             uniqueRelated.push(v);
           }
         }
-        setRelated(uniqueRelated);
+        const finalSlice = uniqueRelated.slice(0, 25);
+        setRelated(finalSlice);
         setMoreVideos([]);
         setExtraPages(0);
-        if (pageNum === 1 && uniqueRelated.length > 0) {
-          saveVideoRelatedSnapshot(id, uniqueRelated);
+        if (pageNum === 1 && finalSlice.length > 0) {
+          saveVideoRelatedSnapshot(id, finalSlice);
+          addGlobalShownIds(finalSlice.map((v) => v.id));
         }
       }
 
@@ -195,12 +272,14 @@ export default function WatchClient({
   );
 
   useEffect(() => {
+    let active = true;
     window.scrollTo(0, 0);
     setRelatedPage(1);
     setMoreVideos([]);
     setExtraPages(0);
 
     const handleLoadedVideo = (v: WatchVideo | null) => {
+      if (!active) return;
       if (v) {
         setVideo(v);
         if (v.title) {
@@ -210,22 +289,30 @@ export default function WatchClient({
       }
       loadSimilarVideos(v, 1, false);
 
-      const prefs = getTopPreferences(3);
-      const prefQuery = prefs[0] || 'desi bhabhi';
-      fetchBatch(prefQuery, 2, 15).then((list) => {
+      const prefs = getTopPreferences(4);
+      const prefQuery = prefs[(hashString(id) % Math.max(1, prefs.length))] || 'desi bhabhi';
+      fetchBatch(prefQuery, (hashString(id) % 10) + 1, 15).then((list) => {
+        if (!active) return;
         setForYouVideos(list.filter((item) => item.id && item.id !== id).slice(0, 10));
       });
     };
 
     if (initialVideo && initialVideo.id === id) {
       handleLoadedVideo(initialVideo);
-      return;
+      return () => {
+        active = false;
+      };
     }
 
-    fetch(`https://www.eporner.com/api/v2/video/id/${encodeURIComponent(id)}/?format=json`)
-      .then((res) => res.json())
-      .then((data: WatchVideo) => handleLoadedVideo(data))
+    // Fetch real video metadata via our server API so mobile browsers never fail CORS
+    fetch(`/api/video/${encodeURIComponent(id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: WatchVideo | null) => handleLoadedVideo(data))
       .catch(() => handleLoadedVideo(null));
+
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, initialVideo]);
 
@@ -466,7 +553,7 @@ export default function WatchClient({
             allowFullScreen
           />
 
-          {/* Top bar mask: covers "Hosted by Eporner" / external links */}
+          {/* Top bar mask */}
           <div className="absolute top-0 left-0 right-0 h-14 bg-gradient-to-b from-black via-black/95 to-transparent flex items-center justify-between px-4 z-20 pointer-events-auto">
             <div className="flex items-center gap-0.5 text-lg font-black select-none">
               <span className="text-[#FF9900]">H</span>
@@ -486,7 +573,7 @@ export default function WatchClient({
             </button>
           </div>
 
-          {/* Bottom-right corner mask: covers corner logo without blocking the progress bar */}
+          {/* Bottom-right corner mask */}
           <div className="absolute bottom-11 right-3 bg-black/95 px-3 py-1 rounded-lg flex items-center gap-0.5 text-base font-black z-20 select-none">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
@@ -529,7 +616,7 @@ export default function WatchClient({
           </div>
         )}
 
-        {/* Similar Videos Matched to Current Video */}
+        {/* Similar Videos Matched Specifically to This Video */}
         <div id="similar-videos-section" className="mt-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[#FF9900] text-2xl font-bold">

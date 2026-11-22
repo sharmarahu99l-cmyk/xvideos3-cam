@@ -9,7 +9,7 @@ import {
   trackUserInterest,
   getTopPreferences,
   getWatchHistory,
-} from './Lib/userPrefs';
+} from './lib/userPrefs';
 
 type Video = StoredVideo;
 
@@ -197,15 +197,20 @@ export default function HomeClient() {
       const prefQuery = prefs[0] || FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
       setRecentHistory(getWatchHistory(5));
 
-      const [fetched, similar, personalized] = await Promise.all([
+      let [fetched, similar, personalized] = await Promise.all([
         fetchVideos(urlQuery, urlPage, PER_PAGE, 'most_viewed'),
         fetchVideos(urlQuery || 'desi bhabhi', urlPage + 2, 15, 'top-rated'),
         fetchVideos(prefQuery, (urlPage % 10) + 1, 15, 'latest'),
       ]);
 
+      // Guarantee main page never stays empty if a high page number or rare term returns 0
+      if (fetched.length === 0) {
+        const fallbackTopic = FALLBACK_TOPICS[urlPage % FALLBACK_TOPICS.length];
+        fetched = await fetchVideos(fallbackTopic, (urlPage % 20) + 1, PER_PAGE, 'most_viewed');
+      }
+
       if (!active) return;
 
-      // Deduplicate across all three sections so no video repeats on screen
       const seenIds = new Set<string>();
       const uniqueMain: Video[] = [];
       for (const v of fetched) {
@@ -253,7 +258,6 @@ export default function HomeClient() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Only show & fetch hints when user has actually typed something
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!showHints || trimmed.length === 0) {
@@ -343,14 +347,13 @@ export default function HomeClient() {
     navigateToSearch(urlQuery, pageNum);
   };
 
-  // Never-ending Load More: if current search runs out, pivots smoothly to preferred/trending topics
   const handleLoadMore = async () => {
     if (loadingMore) return;
     setLoadingMore(true);
 
     const nextStep = loadedExtraPages + 1;
     const nextBatchPage = page + nextStep;
-    let more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
+    const more = await fetchVideos(urlQuery, nextBatchPage, PER_PAGE, 'most_viewed');
 
     const existingIds = new Set(videos.map((v) => v.id));
     let uniqueNew = more.filter((v) => v.id && !existingIds.has(v.id));
@@ -383,6 +386,74 @@ export default function HomeClient() {
   };
 
   const pageWindow = getPageWindow(page, MAX_PAGES);
+
+  const renderPaginationBar = () => (
+    <nav
+      aria-label="Pagination"
+      className="flex justify-center items-center gap-2 flex-wrap my-6"
+    >
+      <button
+        type="button"
+        onClick={() => handlePageClick(Math.max(1, page - 1))}
+        disabled={page <= 1}
+        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm md:text-base"
+      >
+        ← Back
+      </button>
+
+      {pageWindow[0] > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => handlePageClick(1)}
+            className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
+          >
+            1
+          </button>
+          {pageWindow[0] > 2 && <span className="px-1 text-gray-500 font-bold">…</span>}
+        </>
+      )}
+
+      {pageWindow.map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => handlePageClick(p)}
+          className={`px-4 py-2.5 rounded-full font-bold transition text-sm md:text-base ${
+            page === p
+              ? 'bg-[#FF9900] text-black shadow-md'
+              : 'bg-[#222] hover:bg-[#FF9900] hover:text-black text-white'
+          }`}
+        >
+          {p}
+        </button>
+      ))}
+
+      {pageWindow[pageWindow.length - 1] < MAX_PAGES && (
+        <>
+          {pageWindow[pageWindow.length - 1] < MAX_PAGES - 1 && (
+            <span className="px-1 text-gray-500 font-bold">…</span>
+          )}
+          <button
+            type="button"
+            onClick={() => handlePageClick(MAX_PAGES)}
+            className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
+          >
+            {MAX_PAGES}
+          </button>
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
+        disabled={page >= MAX_PAGES}
+        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm md:text-base"
+      >
+        Next →
+      </button>
+    </nav>
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
@@ -529,10 +600,10 @@ export default function HomeClient() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h1 className="text-2xl md:text-3xl font-black text-[#FF9900]">
             {urlQuery ? `Results for "${urlQuery}"` : 'Trending Desi & HD Videos'}
-            {page > 1 ? ` — Page ${page}` : ''}
+            {` — Page ${page} of ${MAX_PAGES}`}
           </h1>
           {urlQuery && (
             <button
@@ -544,6 +615,9 @@ export default function HomeClient() {
           )}
         </div>
 
+        {/* Top Page Numbers Bar (Always Visible) */}
+        {renderPaginationBar()}
+
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {[...Array(15)].map((_, i) => (
@@ -552,7 +626,7 @@ export default function HomeClient() {
           </div>
         ) : videos.length === 0 ? (
           <div className="text-center py-20 text-yellow-500 text-xl">
-            No results found for &ldquo;{urlQuery}&rdquo;. Try another keyword.
+            No results found for &ldquo;{urlQuery}&rdquo;. Try another keyword or page.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -564,9 +638,9 @@ export default function HomeClient() {
           </div>
         )}
 
-        {/* Load More + 1, 2, 3, 4, 5, 6, 7, 8, 9 ... 200 Pagination */}
-        {videos.length > 0 && (
-          <div className="mt-10 space-y-6">
+        {/* Load More + Bottom Page Numbers Bar (Always Visible) */}
+        <div className="mt-10 space-y-4">
+          {videos.length > 0 && (
             <div className="flex justify-center">
               <button
                 onClick={handleLoadMore}
@@ -576,66 +650,10 @@ export default function HomeClient() {
                 {loadingMore ? 'Loading More Videos...' : 'LOAD MORE VIDEOS'}
               </button>
             </div>
+          )}
 
-            <div className="flex justify-center items-center gap-2 flex-wrap">
-              <button
-                onClick={() => handlePageClick(Math.max(1, page - 1))}
-                disabled={page <= 1}
-                className="px-5 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40 transition"
-              >
-                Prev
-              </button>
-
-              {pageWindow[0] > 1 && (
-                <>
-                  <button
-                    onClick={() => handlePageClick(1)}
-                    className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold transition"
-                  >
-                    1
-                  </button>
-                  {pageWindow[0] > 2 && <span className="px-2 text-gray-500 font-bold">…</span>}
-                </>
-              )}
-
-              {pageWindow.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => handlePageClick(p)}
-                  className={`px-4 py-2.5 rounded-full font-bold transition ${
-                    page === p
-                      ? 'bg-[#FF9900] text-black'
-                      : 'bg-[#222] hover:bg-[#FF9900] hover:text-black'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-
-              {pageWindow[pageWindow.length - 1] < MAX_PAGES && (
-                <>
-                  {pageWindow[pageWindow.length - 1] < MAX_PAGES - 1 && (
-                    <span className="px-2 text-gray-500 font-bold">…</span>
-                  )}
-                  <button
-                    onClick={() => handlePageClick(MAX_PAGES)}
-                    className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold transition"
-                  >
-                    {MAX_PAGES}
-                  </button>
-                </>
-              )}
-
-              <button
-                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
-                disabled={page >= MAX_PAGES}
-                className="px-5 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black rounded-full font-bold disabled:opacity-40 transition"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+          {renderPaginationBar()}
+        </div>
 
         {/* Personalized Recommendations Based on User Preferences */}
         {!loading && forYouVideos.length > 0 && (
@@ -685,7 +703,7 @@ export default function HomeClient() {
           </section>
         )}
 
-        {/* Recently Watched (Jump Back to Old Videos Anytime) */}
+        {/* Recently Watched */}
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">
             <h2 className="text-2xl font-black text-[#FF9900] mb-6">
