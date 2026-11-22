@@ -82,8 +82,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [videos, setVideos] = useState<ReelVideo[]>(initialVideos.filter(validThumb));
   const [activeCategory, setActiveCategory] = useState<string>('desi');
   const [activeIndex, setActiveIndex] = useState<number>(0);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [interactPlayer, setInteractPlayer] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(initialVideos.length === 0);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
@@ -111,7 +109,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   }, [activeCategory, videos.length]);
 
-  // Auto-start when scrolling to a new reel
+  // Mount only the active reel when scrolling into view
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -122,13 +120,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
           if (entry.isIntersecting) {
             const idx = Number((entry.target as HTMLElement).dataset.index);
             if (!Number.isNaN(idx)) {
-              setActiveIndex((prev) => {
-                if (prev !== idx) {
-                  setIsPaused(false);
-                  setInteractPlayer(false);
-                }
-                return idx;
-              });
+              setActiveIndex(idx);
             }
           }
         }
@@ -181,7 +173,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     [videos.length]
   );
 
-  // Desktop keyboard Up/Down + Space to pause/play
+  // Desktop keyboard Up/Down navigation
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
@@ -190,9 +182,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         scrollToReel(activeIndex - 1);
-      } else if (e.key === ' ') {
-        e.preventDefault();
-        setIsPaused((prev) => !prev);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -204,8 +193,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setActiveCategory(query);
     setLoading(true);
     setActiveIndex(0);
-    setIsPaused(false);
-    setInteractPlayer(false);
     setPage(1);
     const batch = await fetchReelBatch(query, 1);
     setVideos(batch);
@@ -306,7 +293,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         >
           {videos.map((v, idx) => {
             const isActive = idx === activeIndex;
-            const isPlaying = isActive && !isPaused;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
 
@@ -319,9 +305,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 }}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
               >
-                {/* Full-Screen Reel Frame (Full width on mobile, 9:16 phone column on desktop) */}
+                {/* Full-Screen Reel Frame */}
                 <div className="relative h-[100dvh] w-full sm:max-w-[460px] bg-black overflow-hidden sm:border-x sm:border-white/10">
-                  {/* Base Full-Bleed Thumbnail (always ready when paused or scrolling) */}
+                  {/* Thumbnail shown immediately while scrolling */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
@@ -329,42 +315,22 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Full-Screen Scaled Video Layer (fills 100% height edge-to-edge, hides player bars) */}
-                  {isPlaying && (
-                    <div className="absolute inset-0 overflow-hidden flex items-center justify-center bg-black">
+                  {/* Directly Interactive Full-Bleed Player (No Blocking Overlay) */}
+                  {isActive && (
+                    <div className="absolute inset-0 overflow-hidden flex items-center justify-center bg-black z-10">
                       <iframe
                         key={`reel-frame-${v.id}`}
-                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1`}
-                        className="w-[195dvh] h-[112dvh] max-w-none border-0 shrink-0"
-                        allow="autoplay; fullscreen"
+                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`}
+                        className="w-[185dvh] h-[112dvh] max-w-none border-0 shrink-0"
+                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                         allowFullScreen
                       />
                     </div>
                   )}
 
-                  {/* Top & Bottom Instagram-style Gradient Vignettes */}
-                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-10" />
-                  <div className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-10" />
-
-                  {/* Full-Screen Tap-to-Pause/Play & Smooth Swipe Overlay */}
-                  {!interactPlayer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isActive) setIsPaused((prev) => !prev);
-                      }}
-                      aria-label={isPaused ? 'Play reel' : 'Pause reel'}
-                      className="absolute inset-0 z-20 flex items-center justify-center bg-transparent cursor-pointer focus:outline-none"
-                    >
-                      {isActive && isPaused && (
-                        <div className="w-20 h-20 rounded-full bg-black/65 border-2 border-[#FF9900] text-[#FF9900] flex items-center justify-center backdrop-blur-md shadow-2xl">
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 ml-1">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </div>
-                      )}
-                    </button>
-                  )}
+                  {/* Top & Bottom Gradient Vignettes (pointer-events-none so video stays clickable) */}
+                  <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
+                  <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none z-20" />
 
                   {/* Right-Side Action Rail */}
                   <div className="absolute right-3 bottom-24 z-30 flex flex-col items-center gap-4">
@@ -388,34 +354,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </div>
                       <span className="text-[10px] font-bold drop-shadow">
                         {isLiked ? 'Liked' : 'Like'}
-                      </span>
-                    </button>
-
-                    {/* Toggle Direct Player Controls (Sound / Seek) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsPaused(false);
-                        setInteractPlayer((prev) => !prev);
-                      }}
-                      aria-label="Toggle video controls"
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
-                    >
-                      <div
-                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
-                          interactPlayer
-                            ? 'bg-[#FF9900] border-[#FF9900] text-black'
-                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
-                        }`}
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">
-                        {interactPlayer ? 'Swipe' : 'Sound'}
                       </span>
                     </button>
 
@@ -451,14 +389,14 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Share</span>
                     </button>
 
-                    {/* Prev / Next Reel Buttons */}
+                    {/* Prev / Next Reel Controls */}
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
                       <button
                         type="button"
                         onClick={() => scrollToReel(idx - 1)}
                         disabled={idx === 0}
                         aria-label="Previous reel"
-                        className="w-9 h-9 rounded-full bg-black/70 hover:bg-[#FF9900] hover:text-black border border-white/20 flex items-center justify-center disabled:opacity-30 transition cursor-pointer text-sm font-black"
+                        className="w-10 h-10 rounded-full bg-black/75 hover:bg-[#FF9900] hover:text-black border border-white/20 flex items-center justify-center disabled:opacity-30 transition cursor-pointer text-base font-black"
                       >
                         ↑
                       </button>
@@ -466,7 +404,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         type="button"
                         onClick={() => scrollToReel(idx + 1)}
                         aria-label="Next reel"
-                        className="w-9 h-9 rounded-full bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black flex items-center justify-center shadow-lg transition cursor-pointer text-sm"
+                        className="w-10 h-10 rounded-full bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black flex items-center justify-center shadow-lg transition cursor-pointer text-base"
                       >
                         ↓
                       </button>
@@ -492,10 +430,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     <h2 className="text-white text-sm sm:text-base font-bold line-clamp-2 drop-shadow-md leading-snug">
                       {v.title}
                     </h2>
-
-                    <p className="text-[11px] text-gray-300 mt-1 drop-shadow">
-                      {isPaused ? 'Paused • Tap anywhere to play' : 'Tap to pause • Swipe up for next'}
-                    </p>
                   </div>
                 </div>
               </section>
