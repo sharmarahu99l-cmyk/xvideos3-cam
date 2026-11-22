@@ -66,12 +66,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://www.eporner.com" />
-        <link rel="preconnect" href="https://static-ca-cdn.eporner.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://poweredby.jads.co" />
-        <link rel="dns-prefetch" href="https://js.juicyads.com" />
-      </head>
       <body className="bg-[#0a0a0a] text-[#ddd]">
         {children}
         <GlobalUI />
