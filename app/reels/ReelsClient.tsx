@@ -221,21 +221,31 @@ function getInstantReelHints(query: string): SearchHint[] {
   return out;
 }
 
-function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
-  const totalSecs = Number(lengthSec);
-  if (!Number.isNaN(totalSecs) && totalSecs > 0) {
-    const mins = Math.floor(totalSecs / 60);
-    const secs = Math.floor(totalSecs % 60);
-    return `${mins}:${String(secs).padStart(2, '0')}`;
-  }
+function parseTotalSeconds(lengthSec?: number | string, lengthMin?: number | string): number {
+  const secs = Number(lengthSec);
+  if (!Number.isNaN(secs) && secs > 0) return Math.floor(secs);
+
   if (typeof lengthMin === 'string' && lengthMin.includes(':')) {
-    return lengthMin.trim();
+    const parts = lengthMin.split(':').map((p) => Number(p) || 0);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
   }
-  const minsNum = Number(lengthMin);
-  if (!Number.isNaN(minsNum) && minsNum > 0) {
-    return `${Math.floor(minsNum)}:00`;
-  }
-  return 'HD';
+
+  const mins = Number(lengthMin);
+  if (!Number.isNaN(mins) && mins > 0) return Math.floor(mins * 60);
+  return 60;
+}
+
+function formatSecondsLabel(totalSecs: number): string {
+  const safe = Math.max(0, Math.floor(totalSecs));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
+  const total = parseTotalSeconds(lengthSec, lengthMin);
+  return total > 0 ? formatSecondsLabel(total) : 'HD';
 }
 
 function validThumb(v: ReelVideo): boolean {
@@ -388,11 +398,15 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Persistent Sound State & Play/Pause State
+  // Persistent Sound State
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
-  const [isFullFill, setIsFullFill] = useState<boolean>(true);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [playSession, setPlaySession] = useState<number>(0);
+
+  // Bottom Scrub Slider State (forward / backward seeking)
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  const [seekStartSec, setSeekStartSec] = useState<number>(0);
+  const [seekVersion, setSeekVersion] = useState<number>(0);
+  const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
+  const [scrubPreviewSec, setScrubPreviewSec] = useState<number>(0);
 
   // Search bar resets empty on refresh
   const [searchInput, setSearchInput] = useState<string>('');
@@ -430,14 +444,28 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Automatically start playing whenever swiping to a new reel
+  // Reset slider position when changing reel
   useEffect(() => {
-    setIsPaused(false);
+    setElapsedSec(0);
+    setSeekStartSec(0);
+    setIsScrubbing(false);
   }, [activeIndex]);
+
+  // Advance bottom slider smoothly every second while active reel plays
+  useEffect(() => {
+    const activeVideo = videos[activeIndex];
+    if (!activeVideo || isScrubbing) return;
+    const total = parseTotalSeconds(activeVideo.length_sec, activeVideo.length_min);
+
+    const timer = setInterval(() => {
+      setElapsedSec((prev) => (prev + 1 >= total ? 0 : prev + 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [activeIndex, videos, isScrubbing]);
 
   // Enforce mute/unmute state on the active player
   useEffect(() => {
-    if (isPaused) return;
     const cmd = isUnmuted ? 'unmute' : 'mute';
     sendPlayerCommand(activeIframeRef.current, cmd);
     const t1 = setTimeout(() => sendPlayerCommand(activeIframeRef.current, cmd), 450);
@@ -446,7 +474,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [isUnmuted, activeIndex, isPaused, playSession]);
+  }, [isUnmuted, activeIndex, seekVersion]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -575,31 +603,24 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, scrollToReel]);
 
-  const handleTogglePlayPause = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    setIsPaused((prev) => {
-      const nextPaused = !prev;
-      if (!nextPaused) {
-        setPlaySession((s) => s + 1);
-      }
-      return nextPaused;
-    });
-  };
-
   const toggleGlobalSound = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     const nextUnmuted = !isUnmuted;
     setIsUnmuted(nextUnmuted);
-    if (isPaused) {
-      setIsPaused(false);
-      setPlaySession((s) => s + 1);
-    }
     try {
       localStorage.setItem(UNMUTED_PREF_KEY, String(nextUnmuted));
     } catch {}
     sendPlayerCommand(activeIframeRef.current, nextUnmuted ? 'unmute' : 'mute');
     setToast(nextUnmuted ? '🔊 Sound On' : '🔇 Muted');
     setTimeout(() => setToast(''), 1500);
+  };
+
+  const commitSeekToSecond = (targetSec: number) => {
+    const safeSec = Math.max(0, Math.floor(targetSec));
+    setIsScrubbing(false);
+    setElapsedSec(safeSec);
+    setSeekStartSec(safeSec);
+    setSeekVersion((s) => s + 1);
   };
 
   const executeReelSearch = async (rawTerm: string) => {
@@ -615,7 +636,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setActiveCategory(lower);
     setLoading(true);
     setActiveIndex(0);
-    setIsPaused(false);
 
     const batch = await fetchFreshUniqueBatch(lower, new Set(), true);
     setVideos(batch);
@@ -668,7 +688,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     setLoading(true);
     setActiveIndex(0);
-    setIsPaused(false);
 
     const batch = await fetchFreshUniqueBatch(query, new Set(), true);
     setVideos(batch);
@@ -716,7 +735,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
-      {/* Sleek Top Overlay (Single Mute/Unmute button kept only on right action rail) */}
+      {/* Sleek Top Overlay */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/55 to-transparent pt-2.5 pb-4 px-3 pointer-events-none">
         <div className="max-w-md mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
@@ -866,11 +885,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const isActive = idx === activeIndex;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
+            const totalDurationSec = parseTotalSeconds(v.length_sec, v.length_min);
+            const currentSliderSec = isActive
+              ? isScrubbing
+                ? scrubPreviewSec
+                : elapsedSec
+              : 0;
 
             const muteFlag = isUnmuted ? '0' : '1';
+            const startParam = isActive && seekStartSec > 0 ? `&start=${seekStartSec}` : '';
             const epornerEmbedUrl = `https://www.eporner.com/embed/${encodeURIComponent(
               v.id
-            )}/?autoplay=1&autostart=1&mute=${muteFlag}&muted=${muteFlag}`;
+            )}/?autoplay=1&autostart=1&mute=${muteFlag}&muted=${muteFlag}${startParam}`;
 
             return (
               <section
@@ -891,14 +917,14 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Active Sandboxed Eporner Stream Player (Blocks all outbound redirects) */}
-                  {isActive && !isPaused && (
+                  {/* Active Sandboxed Stream Player */}
+                  {isActive && (
                     <div className="absolute inset-0 z-10 overflow-hidden bg-black">
                       <iframe
                         ref={(el) => {
                           if (isActive) activeIframeRef.current = el;
                         }}
-                        key={`ep-reel-${v.id}-${playSession}-${isUnmuted ? 'u' : 'm'}`}
+                        key={`ep-reel-${v.id}-${seekVersion}-${isUnmuted ? 'u' : 'm'}`}
                         src={epornerEmbedUrl}
                         title={v.title}
                         onLoad={(e) => {
@@ -906,34 +932,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                           sendPlayerCommand(e.currentTarget, isUnmuted ? 'unmute' : 'mute');
                         }}
                         sandbox="allow-scripts allow-same-origin allow-presentation"
-                        className={`w-full h-full border-0 transition-transform duration-200 ${
-                          isFullFill ? 'scale-[1.38] origin-center' : 'scale-100'
-                        }`}
+                        className="w-full h-full border-0 scale-[1.38] origin-center"
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                       />
-                    </div>
-                  )}
-
-                  {/* Clean Resume Overlay shown ONLY when Paused */}
-                  {isActive && isPaused && (
-                    <div
-                      onClick={() => handleTogglePlayPause()}
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Resume reel"
-                      onKeyDown={(e) => {
-                        if (e.key === ' ' || e.key === 'Enter') {
-                          e.preventDefault();
-                          handleTogglePlayPause();
-                        }
-                      }}
-                      className="absolute inset-x-0 top-28 bottom-16 z-20 cursor-pointer flex items-center justify-center bg-black/30"
-                    >
-                      <div className="w-16 h-16 rounded-full bg-black/75 border border-white/25 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </div>
                     </div>
                   )}
 
@@ -941,133 +942,73 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
                   <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-20" />
 
-                  {/* Right-Side Reels Action Rail */}
-                  <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">
-                    {/* Pause / Play Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => handleTogglePlayPause(e)}
-                      aria-label={isPaused ? 'Resume reel' : 'Pause reel'}
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
-                    >
-                      <div
-                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
-                          isPaused
-                            ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-lg'
-                            : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
-                        }`}
-                      >
-                        {isPaused ? (
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                            <rect x="6" y="5" width="4" height="14" rx="1" />
-                            <rect x="14" y="5" width="4" height="14" rx="1" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">
-                        {isPaused ? 'Play' : 'Pause'}
-                      </span>
-                    </button>
-
-                    {/* Single Global Unmute / Mute Toggle */}
+                  {/* Compact Right-Side Reels Action Rail (Sound, Like, Share only) */}
+                  <div className="absolute right-2.5 bottom-16 z-30 flex flex-col items-center gap-3">
+                    {/* Small Unmute / Sound On Button */}
                     <button
                       type="button"
                       onClick={(e) => toggleGlobalSound(e)}
                       aria-label={isUnmuted ? 'Mute reels' : 'Unmute reels'}
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                      className="flex flex-col items-center gap-0.5 cursor-pointer group"
                     >
                       <div
-                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                        className={`w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isUnmuted
-                            ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-lg'
+                            ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-md'
                             : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
                         {isUnmuted ? (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-4 h-4">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                             <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
                             <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
                           </svg>
                         ) : (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-4 h-4">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                             <line x1="23" y1="9" x2="17" y2="15" />
                             <line x1="17" y1="9" x2="23" y2="15" />
                           </svg>
                         )}
                       </div>
-                      <span className="text-[10px] font-bold drop-shadow">
-                        {isUnmuted ? 'Sound On' : 'Unmute'}
+                      <span className="text-[9px] font-bold drop-shadow">
+                        {isUnmuted ? 'Sound' : 'Unmute'}
                       </span>
                     </button>
 
-                    {/* Full-Screen 9:16 vs Wide Fit Toggle */}
-                    <button
-                      type="button"
-                      onClick={() => setIsFullFill((prev) => !prev)}
-                      aria-label="Toggle screen fit"
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
-                    >
-                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">
-                        {isFullFill ? 'Full 9:16' : 'Wide'}
-                      </span>
-                    </button>
-
-                    {/* Like */}
+                    {/* Small Like Button */}
                     <button
                       type="button"
                       onClick={(e) => toggleLike(e, v.id)}
                       aria-label="Like reel"
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                      className="flex flex-col items-center gap-0.5 cursor-pointer group"
                     >
                       <div
-                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                        className={`w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isLiked
-                            ? 'bg-red-500 border-red-400 text-white scale-110'
+                            ? 'bg-red-500 border-red-400 text-white scale-105'
                             : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                           <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                         </svg>
                       </div>
-                      <span className="text-[10px] font-bold drop-shadow">
+                      <span className="text-[9px] font-bold drop-shadow">
                         {isLiked ? 'Liked' : 'Like'}
                       </span>
                     </button>
 
-                    {/* Watch Full Page */}
-                    <Link
-                      href={`/watch/${v.id}`}
-                      className="flex flex-col items-center gap-1 group"
-                    >
-                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">Watch</span>
-                    </Link>
-
-                    {/* Share */}
+                    {/* Small Share Button */}
                     <button
                       type="button"
                       onClick={(e) => handleShare(e, v)}
                       aria-label="Share reel"
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                      className="flex flex-col items-center gap-0.5 cursor-pointer group"
                     >
-                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                      <div className="w-9 h-9 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-4 h-4">
                           <circle cx="18" cy="5" r="3" />
                           <circle cx="6" cy="12" r="3" />
                           <circle cx="18" cy="19" r="3" />
@@ -1075,33 +1016,12 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                           <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                         </svg>
                       </div>
-                      <span className="text-[10px] font-bold drop-shadow">Share</span>
+                      <span className="text-[9px] font-bold drop-shadow">Share</span>
                     </button>
-
-                    {/* Up / Down Navigation */}
-                    <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
-                      <button
-                        type="button"
-                        onClick={() => scrollToReel(idx - 1)}
-                        disabled={idx === 0}
-                        aria-label="Previous reel"
-                        className="w-9 h-9 rounded-full bg-black/75 hover:bg-[#FF9900] hover:text-black border border-white/20 flex items-center justify-center disabled:opacity-30 transition cursor-pointer text-sm font-black"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => scrollToReel(idx + 1)}
-                        aria-label="Next reel"
-                        className="w-9 h-9 rounded-full bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black flex items-center justify-center shadow-lg transition cursor-pointer text-sm"
-                      >
-                        ↓
-                      </button>
-                    </div>
                   </div>
 
                   {/* Bottom Title & Metadata */}
-                  <div className="absolute bottom-7 left-3.5 right-16 z-30 pointer-events-none">
+                  <div className="absolute bottom-9 left-3.5 right-14 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
                         {activeBadgeText}
@@ -1120,6 +1040,48 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       {v.title}
                     </h2>
                   </div>
+
+                  {/* Bottom Forward / Backward Seek Slider */}
+                  {isActive && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-0 inset-x-0 z-30 px-3 pb-2 pt-3 flex flex-col gap-1 bg-gradient-to-t from-black/95 to-transparent"
+                    >
+                      {isScrubbing && (
+                        <div className="self-center bg-black/85 border border-[#FF9900]/60 text-[#FF9900] text-[11px] font-black px-2.5 py-0.5 rounded-full shadow">
+                          {formatSecondsLabel(scrubPreviewSec)} / {formatSecondsLabel(totalDurationSec)}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-gray-300 tabular-nums shrink-0">
+                          {formatSecondsLabel(currentSliderSec)}
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.max(1, totalDurationSec)}
+                          step={1}
+                          value={Math.min(currentSliderSec, Math.max(1, totalDurationSec))}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setIsScrubbing(true);
+                            setScrubPreviewSec(val);
+                          }}
+                          onMouseUp={(e) =>
+                            commitSeekToSecond(Number((e.target as HTMLInputElement).value))
+                          }
+                          onTouchEnd={(e) =>
+                            commitSeekToSecond(Number((e.target as HTMLInputElement).value))
+                          }
+                          aria-label="Seek forward or backward"
+                          className="w-full h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
+                        />
+                        <span className="text-[10px] font-bold text-gray-400 tabular-nums shrink-0">
+                          {formatSecondsLabel(totalDurationSec)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
             );
