@@ -4,6 +4,24 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ALL_PORNSTARS, toPornstarSlug } from '../lib/seoData';
 
+async function fetchDirectStarThumb(star: string): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
+        star
+      )}&per_page=3&page=1&order=most-popular&thumbsize=big&format=json`
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    const videos = Array.isArray(data.videos) ? data.videos : [];
+    for (const v of videos) {
+      const src = v?.default_thumb?.src?.trim() || '';
+      if (src.startsWith('http')) return src;
+    }
+  } catch {}
+  return '';
+}
+
 export default function PornstarsPage() {
   const [filter, setFilter] = useState('');
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -13,19 +31,33 @@ export default function PornstarsPage() {
     let active = true;
 
     const loadAllThumbs = async () => {
-      const chunkSize = 30;
+      const chunkSize = 15;
       for (let i = 0; i < ALL_PORNSTARS.length; i += chunkSize) {
         if (!active) return;
         const batch = ALL_PORNSTARS.slice(i, i + chunkSize);
+        let batchMap: Record<string, string> = {};
+
         try {
           const res = await fetch(`/api/thumbs?items=${encodeURIComponent(batch.join(','))}`);
           if (res.ok) {
-            const data: Record<string, string> = await res.json();
-            if (active) {
-              setThumbs((prev) => ({ ...prev, ...data }));
-            }
+            batchMap = await res.json();
           }
         } catch {}
+
+        // Browser direct fallback for any pornstar still missing a picture
+        const missing = batch.filter((s) => !batchMap[s]);
+        if (missing.length > 0 && active) {
+          const directResults = await Promise.all(
+            missing.map(async (s) => [s, await fetchDirectStarThumb(s)] as const)
+          );
+          for (const [s, url] of directResults) {
+            if (url) batchMap[s] = url;
+          }
+        }
+
+        if (active && Object.keys(batchMap).length > 0) {
+          setThumbs((prev) => ({ ...prev, ...batchMap }));
+        }
       }
     };
 
@@ -40,6 +72,8 @@ export default function PornstarsPage() {
     if (!q) return ALL_PORNSTARS;
     return ALL_PORNSTARS.filter((s) => s.toLowerCase().includes(q));
   }, [filter]);
+
+  const fallbackPool = useMemo(() => Object.values(thumbs).filter(Boolean), [thumbs]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
@@ -88,24 +122,33 @@ export default function PornstarsPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {filteredStars.map((star) => {
+          {filteredStars.map((star, idx) => {
             const slug = toPornstarSlug(star);
-            const imgSrc = thumbs[star];
+            const imgSrc =
+              thumbs[star] ||
+              (fallbackPool.length > 0 ? fallbackPool[idx % fallbackPool.length] : '');
+
             return (
               <Link
                 key={star}
                 href={`/pornstar/${slug}`}
-                className="group relative aspect-[4/3] bg-[#161616] rounded-2xl overflow-hidden border border-gray-800 hover:border-[#FF9900] transition shadow-lg flex items-end"
+                className="group relative aspect-[4/3] bg-[#181818] rounded-2xl overflow-hidden border border-gray-800 hover:border-[#FF9900] transition shadow-lg flex items-end"
               >
                 {imgSrc ? (
                   <img
                     src={imgSrc}
                     alt={`${star} porn videos`}
                     loading="lazy"
+                    onError={(e) => {
+                      const backup = fallbackPool[(idx + 3) % fallbackPool.length];
+                      if (backup && e.currentTarget.src !== backup) {
+                        e.currentTarget.src = backup;
+                      }
+                    }}
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#1f1f1f] via-[#141414] to-black animate-pulse" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#2a1020] via-[#181818] to-[#0f0f0f]" />
                 )}
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />

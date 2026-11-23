@@ -4,6 +4,35 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ALL_CATEGORIES, toCategorySlug } from '../lib/seoData';
 
+function cleanCategoryQuery(cat: string): string {
+  return (
+    cat
+      .toLowerCase()
+      .replace(/\b(videos|porn|ultra hd)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || cat.toLowerCase()
+  );
+}
+
+async function fetchDirectCategoryThumb(cat: string): Promise<string> {
+  const q = cleanCategoryQuery(cat);
+  try {
+    const res = await fetch(
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
+        q
+      )}&per_page=3&page=1&order=most-popular&thumbsize=big&format=json`
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    const videos = Array.isArray(data.videos) ? data.videos : [];
+    for (const v of videos) {
+      const src = v?.default_thumb?.src?.trim() || '';
+      if (src.startsWith('http')) return src;
+    }
+  } catch {}
+  return '';
+}
+
 export default function CategoriesPage() {
   const [filter, setFilter] = useState('');
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -12,21 +41,34 @@ export default function CategoriesPage() {
     document.title = 'All Porn Categories & Desi Video Tags | HubTube - XVideos3';
     let active = true;
 
-    // Fetch real thumbnails in batches of 30 so every category gets its picture smoothly
     const loadAllThumbs = async () => {
-      const chunkSize = 30;
+      const chunkSize = 15;
       for (let i = 0; i < ALL_CATEGORIES.length; i += chunkSize) {
         if (!active) return;
         const batch = ALL_CATEGORIES.slice(i, i + chunkSize);
+        let batchMap: Record<string, string> = {};
+
         try {
           const res = await fetch(`/api/thumbs?items=${encodeURIComponent(batch.join(','))}`);
           if (res.ok) {
-            const data: Record<string, string> = await res.json();
-            if (active) {
-              setThumbs((prev) => ({ ...prev, ...data }));
-            }
+            batchMap = await res.json();
           }
         } catch {}
+
+        // Browser direct fallback for any category still missing a picture
+        const missing = batch.filter((c) => !batchMap[c]);
+        if (missing.length > 0 && active) {
+          const directResults = await Promise.all(
+            missing.map(async (c) => [c, await fetchDirectCategoryThumb(c)] as const)
+          );
+          for (const [c, url] of directResults) {
+            if (url) batchMap[c] = url;
+          }
+        }
+
+        if (active && Object.keys(batchMap).length > 0) {
+          setThumbs((prev) => ({ ...prev, ...batchMap }));
+        }
       }
     };
 
@@ -41,6 +83,8 @@ export default function CategoriesPage() {
     if (!q) return ALL_CATEGORIES;
     return ALL_CATEGORIES.filter((c) => c.toLowerCase().includes(q));
   }, [filter]);
+
+  const fallbackPool = useMemo(() => Object.values(thumbs).filter(Boolean), [thumbs]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
@@ -89,24 +133,33 @@ export default function CategoriesPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {filteredCategories.map((cat) => {
+          {filteredCategories.map((cat, idx) => {
             const slug = toCategorySlug(cat);
-            const imgSrc = thumbs[cat];
+            const imgSrc =
+              thumbs[cat] ||
+              (fallbackPool.length > 0 ? fallbackPool[idx % fallbackPool.length] : '');
+
             return (
               <Link
                 key={cat}
                 href={`/category/${slug}`}
-                className="group relative aspect-video bg-[#161616] rounded-2xl overflow-hidden border border-gray-800 hover:border-[#FF9900] transition shadow-lg flex items-end"
+                className="group relative aspect-video bg-[#181818] rounded-2xl overflow-hidden border border-gray-800 hover:border-[#FF9900] transition shadow-lg flex items-end"
               >
                 {imgSrc ? (
                   <img
                     src={imgSrc}
                     alt={`${cat} videos`}
                     loading="lazy"
+                    onError={(e) => {
+                      const backup = fallbackPool[(idx + 3) % fallbackPool.length];
+                      if (backup && e.currentTarget.src !== backup) {
+                        e.currentTarget.src = backup;
+                      }
+                    }}
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#1f1f1f] via-[#141414] to-black animate-pulse" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#2a1d0a] via-[#181818] to-[#0f0f0f]" />
                 )}
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />

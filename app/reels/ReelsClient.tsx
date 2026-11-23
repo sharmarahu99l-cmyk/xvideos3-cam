@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { trackUserInterest } from '../lib/userPrefs';
 
 export interface ReelVideo {
   id: string;
@@ -13,21 +14,142 @@ export interface ReelVideo {
   keywords?: string;
 }
 
-const FOR_YOU_KEY = '__for_you_mms__';
+type SearchHint = {
+  label: string;
+  type: 'category' | 'pornstar' | 'desi' | 'video';
+};
 
-const REEL_CATEGORIES = [
-  { label: '🔥 For You (MMS)', query: FOR_YOU_KEY },
-  { label: 'Desi', query: 'desi' },
+interface ReelCategoryPill {
+  label: string;
+  query: string;
+}
+
+const FOR_YOU_KEY = '__for_you_dynamic__';
+const LIKES_KEY = 'hubtube_reel_likes_v1';
+const REEL_SEARCH_HISTORY_KEY = 'hubtube_reel_searches_v1';
+
+const DEFAULT_REEL_CATEGORIES: ReelCategoryPill[] = [
+  { label: '🔥 For You', query: FOR_YOU_KEY },
+  { label: 'Leaked MMS', query: 'leaked mms' },
+  { label: 'Desi MMS', query: 'desi mms' },
   { label: 'Bhabhi', query: 'bhabhi' },
   { label: 'Homemade', query: 'homemade' },
   { label: 'Amateur', query: 'amateur' },
   { label: '4K HD', query: '4k' },
-  { label: 'Big Tits', query: 'big tits' },
   { label: 'MILF', query: 'milf' },
   { label: 'Pornstars', query: 'pornstar' },
 ];
 
-const LIKES_KEY = 'hubtube_reel_likes_v1';
+const INSTANT_DESI = [
+  'MMS', 'Leaked MMS', 'Desi MMS', 'Viral MMS', 'Desi', 'Desi Bhabhi',
+  'Desi Aunty', 'Indian Bhabhi', 'Indian Homemade', 'Punjabi Desi',
+  'Pakistani MMS', 'Hindi Audio', 'Desi Couple', 'Desi College Girl',
+  'South Indian Desi', 'Tamil Desi', 'Bengali Bhabhi', 'Mallu Aunty',
+];
+
+const INSTANT_CATEGORIES = [
+  'Amateur', 'Homemade', '4K', '1080p', '60 FPS', 'Asian', 'Japanese',
+  'Korean', 'Latina', 'Ebony', 'Russian', 'Indian', 'Arab', 'Anal',
+  'Big Tits', 'Big Ass', 'MILF', 'Teen', 'Petite', 'Blonde', 'Brunette',
+  'POV', 'Creampie', 'Hardcore', 'Threesome', 'Lesbian', 'Public',
+  'Massage', 'Lingerie', 'Solo', 'VR Porn',
+];
+
+const INSTANT_PORNSTARS = [
+  'Angela White', 'Riley Reid', 'Mia Khalifa', 'Lana Rhoades', 'Abella Danger',
+  'Dani Daniels', 'Ava Addams', 'Cory Chase', 'Violet Myers', 'Lena Paul',
+  'Valentina Nappi', 'Adriana Chechik', 'Savannah Bond', 'Mia Malkova',
+  'Alexis Fawx', 'Blake Blossom', 'Little Caprice', 'Kendra Lust',
+  'Eva Elfie', 'Sweetie Fox', 'Rae Lil Black', 'Sunny Leone', 'Johnny Sins',
+];
+
+const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
+  desi: { text: 'MMS/DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
+  category: { text: 'CAT', cls: 'bg-blue-500/20 text-blue-300' },
+  pornstar: { text: 'STAR', cls: 'bg-pink-500/20 text-pink-300' },
+  video: { text: 'REEL', cls: 'bg-neutral-700 text-neutral-300' },
+};
+
+function getInstantReelHints(query: string): SearchHint[] {
+  const lowerQ = query.trim().toLowerCase();
+  if (!lowerQ) return [];
+
+  const seen = new Set<string>();
+  const out: SearchHint[] = [];
+
+  const addMatches = (list: string[], type: SearchHint['type']) => {
+    for (const item of list) {
+      const k = item.toLowerCase();
+      if (k.startsWith(lowerQ) && !seen.has(k)) {
+        seen.add(k);
+        out.push({ label: item, type });
+      }
+    }
+    for (const item of list) {
+      const k = item.toLowerCase();
+      if (!k.startsWith(lowerQ) && k.includes(lowerQ) && !seen.has(k)) {
+        seen.add(k);
+        out.push({ label: item, type });
+      }
+    }
+  };
+
+  addMatches(INSTANT_DESI, 'desi');
+  addMatches(INSTANT_CATEGORIES, 'category');
+  addMatches(INSTANT_PORNSTARS, 'pornstar');
+  return out;
+}
+
+function buildDynamicCategories(searchedTerms: string[]): ReelCategoryPill[] {
+  if (searchedTerms.length === 0) {
+    return DEFAULT_REEL_CATEGORIES;
+  }
+
+  const primary = searchedTerms[0];
+  const pills: ReelCategoryPill[] = [
+    { label: `🔥 For You`, query: FOR_YOU_KEY },
+  ];
+  const seen = new Set<string>([FOR_YOU_KEY]);
+
+  // Add user's searched topics as top pills
+  for (const term of searchedTerms.slice(0, 3)) {
+    const clean = term.trim();
+    const key = clean.toLowerCase();
+    if (clean && !seen.has(key)) {
+      seen.add(key);
+      pills.push({
+        label: clean.charAt(0).toUpperCase() + clean.slice(1),
+        query: key,
+      });
+    }
+  }
+
+  // Add smart sub-niches based on the active search
+  const variations = [`${primary} viral`, `${primary} hd`, `${primary} homemade`];
+  for (const v of variations) {
+    const key = v.toLowerCase();
+    if (!seen.has(key) && pills.length < 7) {
+      seen.add(key);
+      pills.push({
+        label: v.charAt(0).toUpperCase() + v.slice(1),
+        query: key,
+      });
+    }
+  }
+
+  // Keep quick access to Leaked MMS & Desi MMS
+  for (const fallback of [
+    { label: 'Leaked MMS', query: 'leaked mms' },
+    { label: 'Desi MMS', query: 'desi mms' },
+  ]) {
+    if (!seen.has(fallback.query)) {
+      seen.add(fallback.query);
+      pills.push(fallback);
+    }
+  }
+
+  return pills;
+}
 
 function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
   const totalSecs = Number(lengthSec);
@@ -88,20 +210,36 @@ async function fetchSingleOrder(
   return [];
 }
 
-async function fetchReelBatch(categoryQuery: string, pageNum: number): Promise<ReelVideo[]> {
+async function fetchReelBatch(
+  categoryQuery: string,
+  pageNum: number,
+  searchedTerms: string[]
+): Promise<ReelVideo[]> {
+  // For You: uses user's searched topics if they searched on Reels, otherwise Leaked MMS + Desi MMS + MMS
   if (categoryQuery === FOR_YOU_KEY) {
-    const [weekly, latest, popular] = await Promise.all([
-      fetchSingleOrder('mms', pageNum, 12, 'top-weekly'),
-      fetchSingleOrder('mms', pageNum, 12, 'latest'),
-      fetchSingleOrder('mms', pageNum, 12, 'most-popular'),
-    ]);
+    const seedQueries =
+      searchedTerms.length > 0
+        ? Array.from(new Set(searchedTerms)).slice(0, 3)
+        : ['mms', 'leaked mms', 'desi mms'];
+
+    const batches = await Promise.all(
+      seedQueries.map((q, idx) =>
+        fetchSingleOrder(
+          q,
+          pageNum,
+          12,
+          idx === 0 ? 'top-weekly' : idx === 1 ? 'most-popular' : 'latest'
+        )
+      )
+    );
 
     const merged: ReelVideo[] = [];
     const seen = new Set<string>();
-    const maxLen = Math.max(weekly.length, latest.length, popular.length);
+    const maxLen = batches.reduce((m, b) => Math.max(m, b.length), 0);
 
     for (let i = 0; i < maxLen; i++) {
-      for (const item of [weekly[i], latest[i], popular[i]]) {
+      for (const batch of batches) {
+        const item = batch[i];
         if (item && !seen.has(item.id)) {
           seen.add(item.id);
           merged.push(item);
@@ -111,12 +249,30 @@ async function fetchReelBatch(categoryQuery: string, pageNum: number): Promise<R
     return merged;
   }
 
-  return fetchSingleOrder(categoryQuery, pageNum, 20, 'most-popular');
+  // Specific category or active search query: blend most-popular + top-weekly for wide variety
+  const [popular, weekly] = await Promise.all([
+    fetchSingleOrder(categoryQuery, pageNum, 14, 'most-popular'),
+    fetchSingleOrder(categoryQuery, pageNum, 10, 'top-weekly'),
+  ]);
+
+  const merged: ReelVideo[] = [];
+  const seen = new Set<string>();
+  const maxLen = Math.max(popular.length, weekly.length);
+  for (let i = 0; i < maxLen; i++) {
+    for (const item of [popular[i], weekly[i]]) {
+      if (item && !seen.has(item.id)) {
+        seen.add(item.id);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
 }
 
 export default function ReelsClient({ initialVideos }: { initialVideos: ReelVideo[] }) {
   const [videos, setVideos] = useState<ReelVideo[]>(initialVideos.filter(validThumb));
   const [activeCategory, setActiveCategory] = useState<string>(FOR_YOU_KEY);
+  const [searchedTerms, setSearchedTerms] = useState<string[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(initialVideos.length === 0);
@@ -124,27 +280,96 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
+  // Reels search bar state
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [hints, setHints] = useState<SearchHint[]>([]);
+  const [showHints, setShowHints] = useState<boolean>(false);
+  const [activeHintIdx, setActiveHintIdx] = useState<number>(-1);
+
   const feedRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLElement | null>>([]);
   const loadingMoreRef = useRef<boolean>(false);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+  const suggestAbortRef = useRef<AbortController | null>(null);
 
+  // Load saved likes + any previous Reel search terms on mount
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LIKES_KEY);
-      if (raw) setLikedIds(JSON.parse(raw));
-    } catch {}
-  }, []);
+      const rawLikes = localStorage.getItem(LIKES_KEY);
+      if (rawLikes) setLikedIds(JSON.parse(rawLikes));
 
-  useEffect(() => {
+      const rawSearches = localStorage.getItem(REEL_SEARCH_HISTORY_KEY);
+      if (rawSearches) {
+        const parsed = JSON.parse(rawSearches);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSearchedTerms(parsed);
+          setLoading(true);
+          fetchReelBatch(FOR_YOU_KEY, 1, parsed).then((batch) => {
+            if (batch.length > 0) setVideos(batch);
+            setLoading(false);
+          });
+          return;
+        }
+      }
+    } catch {}
+
     if (videos.length === 0) {
       setLoading(true);
-      fetchReelBatch(activeCategory, 1).then((batch) => {
+      fetchReelBatch(FOR_YOU_KEY, 1, []).then((batch) => {
         setVideos(batch);
         setLoading(false);
       });
     }
-  }, [activeCategory, videos.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Outside click closes search suggestions
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
+        setShowHints(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Instant + live autocomplete hints for Reels search bar
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (!showHints || trimmed.length === 0) {
+      setHints([]);
+      setActiveHintIdx(-1);
+      return;
+    }
+
+    const local = getInstantReelHints(trimmed);
+    setHints(local);
+    setActiveHintIdx(-1);
+
+    const timer = setTimeout(async () => {
+      if (suggestAbortRef.current) suggestAbortRef.current.abort();
+      const controller = new AbortController();
+      suggestAbortRef.current = controller;
+
+      try {
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data: { hints?: SearchHint[] } = await res.json();
+        if (Array.isArray(data.hints) && data.hints.length > 0) {
+          const seen = new Set(local.map((h) => h.label.toLowerCase()));
+          const extra = data.hints.filter((h) => !seen.has(h.label.toLowerCase()));
+          setHints([...local, ...extra].slice(0, 10));
+        }
+      } catch {}
+    }, 140);
+
+    return () => clearTimeout(timer);
+  }, [searchInput, showHints]);
+
+  // Track active visible reel on scroll
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -173,6 +398,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
+  // Infinite scroll for active category or searched topic
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -183,7 +409,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       setLoadingMore(true);
       const nextPage = page + 1;
 
-      fetchReelBatch(activeCategory, nextPage).then((more) => {
+      fetchReelBatch(activeCategory, nextPage, searchedTerms).then((more) => {
         setVideos((prev) => {
           const seen = new Set(prev.map((v) => v.id));
           const unique = more.filter((v) => !seen.has(v.id));
@@ -194,7 +420,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         loadingMoreRef.current = false;
       });
     }
-  }, [activeIndex, videos.length, activeCategory, page]);
+  }, [activeIndex, videos.length, activeCategory, page, searchedTerms]);
 
   const scrollToReel = useCallback(
     (targetIdx: number) => {
@@ -209,6 +435,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT') return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         scrollToReel(activeIndex + 1);
@@ -221,13 +448,97 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, scrollToReel]);
 
+  const executeReelSearch = async (rawTerm: string) => {
+    const clean = rawTerm.trim();
+    setShowHints(false);
+    if (!clean) return;
+
+    const lower = clean.toLowerCase();
+    const updatedSearches = [
+      lower,
+      ...searchedTerms.filter((t) => t.toLowerCase() !== lower),
+    ].slice(0, 5);
+
+    setSearchedTerms(updatedSearches);
+    trackUserInterest([lower]);
+    try {
+      localStorage.setItem(REEL_SEARCH_HISTORY_KEY, JSON.stringify(updatedSearches));
+    } catch {}
+
+    setSearchInput(clean);
+    setActiveCategory(lower);
+    setLoading(true);
+    setActiveIndex(0);
+    setPage(1);
+
+    const batch = await fetchReelBatch(lower, 1, updatedSearches);
+    setVideos(batch);
+    setLoading(false);
+    if (feedRef.current) {
+      feedRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    }
+  };
+
+  const handleResetRecommendations = async () => {
+    setSearchInput('');
+    setShowHints(false);
+    setSearchedTerms([]);
+    try {
+      localStorage.removeItem(REEL_SEARCH_HISTORY_KEY);
+    } catch {}
+
+    setActiveCategory(FOR_YOU_KEY);
+    setLoading(true);
+    setActiveIndex(0);
+    setPage(1);
+
+    const batch = await fetchReelBatch(FOR_YOU_KEY, 1, []);
+    setVideos(batch);
+    setLoading(false);
+    if (feedRef.current) {
+      feedRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    }
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeReelSearch(searchInput);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showHints || hints.length === 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeReelSearch(searchInput);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveHintIdx((prev) => (prev + 1) % hints.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveHintIdx((prev) => (prev <= 0 ? hints.length - 1 : prev - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeHintIdx >= 0 && hints[activeHintIdx]) {
+        executeReelSearch(hints[activeHintIdx].label);
+      } else {
+        executeReelSearch(searchInput);
+      }
+    } else if (e.key === 'Escape') {
+      setShowHints(false);
+    }
+  };
+
   const handleCategoryChange = async (query: string) => {
     if (query === activeCategory) return;
     setActiveCategory(query);
     setLoading(true);
     setActiveIndex(0);
     setPage(1);
-    const batch = await fetchReelBatch(query, 1);
+    const batch = await fetchReelBatch(query, 1, searchedTerms);
     setVideos(batch);
     setLoading(false);
     if (feedRef.current) {
@@ -260,19 +571,28 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     } catch {}
   };
 
+  const categoryPills = buildDynamicCategories(searchedTerms);
+  const activeBadgeText =
+    activeCategory === FOR_YOU_KEY
+      ? searchedTerms.length > 0
+        ? `🔥 FOR YOU • ${searchedTerms[0].toUpperCase()}`
+        : '🔥 MMS • LEAKED'
+      : `🔥 ${activeCategory.toUpperCase()}`;
+
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
-      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/85 via-black/45 to-transparent pt-3 pb-5 px-3 pointer-events-none">
+      {/* Compact Floating Top Header + Reels Search Bar + Dynamic Category Pills */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/95 via-black/70 to-transparent pt-2.5 pb-4 px-3 pointer-events-none">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
             href="/"
-            className="flex items-center gap-1.5 bg-black/60 hover:bg-[#FF9900] hover:text-black text-white px-3.5 py-1.5 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
+            className="flex items-center gap-1 bg-black/70 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
           >
             <span>←</span>
             <span>HOME</span>
           </Link>
 
-          <div className="flex items-center gap-0.5 text-lg font-black tracking-tight drop-shadow">
+          <div className="flex items-center gap-0.5 text-base sm:text-lg font-black tracking-tight drop-shadow">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
             <span className="text-[#FF9900]">REELS</span>
@@ -280,32 +600,115 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           <Link
             href="/history"
-            className="bg-black/60 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1.5 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
+            className="bg-black/70 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
           >
             🕒 History
           </Link>
         </div>
 
-        <div className="max-w-lg mx-auto mt-3 flex items-center gap-2 overflow-x-auto pointer-events-auto pb-1">
-          {REEL_CATEGORIES.map((cat) => (
+        {/* Compact Reels Search Bar */}
+        <div ref={searchWrapRef} className="relative max-w-lg mx-auto mt-2 pointer-events-auto">
+          <form onSubmit={handleSearchSubmit} className="relative flex items-center">
+            <input
+              type="text"
+              value={searchInput}
+              onFocus={() => {
+                if (searchInput.trim().length > 0) setShowHints(true);
+              }}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchInput(val);
+                setShowHints(val.trim().length > 0);
+              }}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search reels (e.g. desi mms, bhabhi, pornstar)..."
+              autoComplete="off"
+              className="w-full bg-black/75 border border-[#FF9900]/80 focus:border-[#FF9900] rounded-full pl-3.5 pr-14 py-1.5 text-xs sm:text-sm text-white placeholder-gray-400 backdrop-blur-md outline-none"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput('');
+                  setHints([]);
+                  setShowHints(false);
+                }}
+                aria-label="Clear reel search"
+                className="absolute right-8 text-gray-400 hover:text-white px-1 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+            <button
+              type="submit"
+              aria-label="Search reels"
+              className="absolute right-1 bg-[#FF9900] hover:bg-[#ffaa33] text-black font-black rounded-full w-6 h-6 flex items-center justify-center text-xs cursor-pointer"
+            >
+              🔍
+            </button>
+          </form>
+
+          {/* Autocomplete Dropdown */}
+          {showHints && searchInput.trim().length > 0 && hints.length > 0 && (
+            <div className="absolute left-0 right-0 mt-1.5 bg-[#161616]/95 border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-56 overflow-y-auto backdrop-blur-md">
+              {hints.map((hint, idx) => {
+                const badge = HINT_BADGE[hint.type];
+                return (
+                  <button
+                    key={`${hint.type}-${hint.label}-${idx}`}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      executeReelSearch(hint.label);
+                    }}
+                    className={`w-full px-3.5 py-2 text-left flex items-center justify-between gap-2 border-b border-gray-800/60 text-xs transition cursor-pointer ${
+                      idx === activeHintIdx
+                        ? 'bg-[#FF9900]/25 text-white'
+                        : 'hover:bg-[#222] text-gray-200'
+                    }`}
+                  >
+                    <span className="truncate font-medium">{hint.label}</span>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${badge.cls}`}>
+                      {badge.text}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Dynamic Category Pills (Updates when user searches, defaults to Leaked MMS / Desi MMS) */}
+        <div className="max-w-lg mx-auto mt-2 flex items-center gap-1.5 overflow-x-auto pointer-events-auto pb-0.5">
+          {categoryPills.map((cat) => (
             <button
               key={cat.query}
               type="button"
               onClick={() => handleCategoryChange(cat.query)}
-              className={`px-3.5 py-1 rounded-full text-xs font-bold shrink-0 backdrop-blur-md transition border cursor-pointer ${
+              className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 backdrop-blur-md transition border cursor-pointer ${
                 activeCategory === cat.query
                   ? 'bg-[#FF9900] text-black border-[#FF9900]'
-                  : 'bg-black/55 text-gray-200 border-white/15 hover:border-[#FF9900]'
+                  : 'bg-black/65 text-gray-200 border-white/15 hover:border-[#FF9900]'
               }`}
             >
               {cat.label}
             </button>
           ))}
+
+          {searchedTerms.length > 0 && (
+            <button
+              type="button"
+              onClick={handleResetRecommendations}
+              className="px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500 hover:text-white transition cursor-pointer"
+            >
+              ✕ Reset
+            </button>
+          )}
         </div>
       </header>
 
       {toast && (
-        <div className="fixed top-28 left-1/2 -translate-x-1/2 z-50 bg-[#FF9900] text-black text-xs font-black px-4 py-2 rounded-full shadow-xl">
+        <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 bg-[#FF9900] text-black text-xs font-black px-4 py-2 rounded-full shadow-xl">
           {toast}
         </div>
       )}
@@ -313,7 +716,24 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       {loading ? (
         <div className="h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-black">
           <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-gray-400">Loading MMS Reels...</p>
+          <p className="text-sm font-bold text-gray-400">
+            {activeCategory === FOR_YOU_KEY
+              ? 'Loading Recommended Reels...'
+              : `Loading "${activeCategory}" Reels...`}
+          </p>
+        </div>
+      ) : videos.length === 0 ? (
+        <div className="h-[100dvh] w-full flex flex-col items-center justify-center gap-4 px-4 text-center bg-black">
+          <p className="text-base font-bold text-gray-300">
+            No reels found for &ldquo;{activeCategory}&rdquo;.
+          </p>
+          <button
+            type="button"
+            onClick={handleResetRecommendations}
+            className="px-5 py-2 bg-[#FF9900] text-black text-xs font-black rounded-full cursor-pointer"
+          >
+            Back to MMS For You
+          </button>
         </div>
       ) : (
         <div
@@ -362,7 +782,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   )}
 
-                  <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
+                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
 
                   <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3.5">
                     <button
@@ -439,9 +859,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                   </div>
 
                   <div className="absolute bottom-16 left-3 right-16 z-30 pointer-events-none">
-                    <div className="flex items-center gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
-                        {activeCategory === FOR_YOU_KEY ? '🔥 MMS' : 'HUBREELS'}
+                        {activeBadgeText}
                       </span>
                       <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
                         ⏱ {duration}
@@ -464,7 +884,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
           {loadingMore && (
             <div className="h-24 flex items-center justify-center bg-black text-xs font-bold text-[#FF9900]">
-              Loading more MMS reels...
+              Loading more reels...
             </div>
           )}
         </div>
