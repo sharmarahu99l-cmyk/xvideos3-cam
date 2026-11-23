@@ -8,6 +8,7 @@ export interface ReelVideo {
   id: string;
   title: string;
   default_thumb: { src: string };
+  thumbs?: Array<{ src?: string; width?: number; height?: number }>;
   length_min?: number | string;
   length_sec?: number | string;
   views?: string | number;
@@ -23,6 +24,8 @@ interface ReelCategoryPill {
   label: string;
   query: string;
 }
+
+type VideoOrientation = 'vertical' | 'horizontal';
 
 const FOR_YOU_KEY = '__for_you_dynamic__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
@@ -70,6 +73,18 @@ const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   video: { text: 'REEL', cls: 'bg-neutral-700 text-neutral-300' },
 };
 
+function inferInitialOrientation(v: ReelVideo): VideoOrientation {
+  const firstThumb = v?.thumbs?.[0];
+  if (firstThumb?.width && firstThumb?.height) {
+    return firstThumb.height > firstThumb.width ? 'vertical' : 'horizontal';
+  }
+  const text = `${v?.title || ''} ${v?.keywords || ''}`.toLowerCase();
+  if (/\b(vertical|9:16|shorts|tiktok|reels)\b/.test(text)) {
+    return 'vertical';
+  }
+  return 'horizontal';
+}
+
 function getInstantReelHints(query: string): SearchHint[] {
   const lowerQ = query.trim().toLowerCase();
   if (!lowerQ) return [];
@@ -106,12 +121,9 @@ function buildDynamicCategories(searchedTerms: string[]): ReelCategoryPill[] {
   }
 
   const primary = searchedTerms[0];
-  const pills: ReelCategoryPill[] = [
-    { label: `🔥 For You`, query: FOR_YOU_KEY },
-  ];
+  const pills: ReelCategoryPill[] = [{ label: '🔥 For You', query: FOR_YOU_KEY }];
   const seen = new Set<string>([FOR_YOU_KEY]);
 
-  // Add user's searched topics as top pills
   for (const term of searchedTerms.slice(0, 3)) {
     const clean = term.trim();
     const key = clean.toLowerCase();
@@ -124,7 +136,6 @@ function buildDynamicCategories(searchedTerms: string[]): ReelCategoryPill[] {
     }
   }
 
-  // Add smart sub-niches based on the active search
   const variations = [`${primary} viral`, `${primary} hd`, `${primary} homemade`];
   for (const v of variations) {
     const key = v.toLowerCase();
@@ -137,7 +148,6 @@ function buildDynamicCategories(searchedTerms: string[]): ReelCategoryPill[] {
     }
   }
 
-  // Keep quick access to Leaked MMS & Desi MMS
   for (const fallback of [
     { label: 'Leaked MMS', query: 'leaked mms' },
     { label: 'Desi MMS', query: 'desi mms' },
@@ -215,7 +225,6 @@ async function fetchReelBatch(
   pageNum: number,
   searchedTerms: string[]
 ): Promise<ReelVideo[]> {
-  // For You: uses user's searched topics if they searched on Reels, otherwise Leaked MMS + Desi MMS + MMS
   if (categoryQuery === FOR_YOU_KEY) {
     const seedQueries =
       searchedTerms.length > 0
@@ -249,7 +258,6 @@ async function fetchReelBatch(
     return merged;
   }
 
-  // Specific category or active search query: blend most-popular + top-weekly for wide variety
   const [popular, weekly] = await Promise.all([
     fetchSingleOrder(categoryQuery, pageNum, 14, 'most-popular'),
     fetchSingleOrder(categoryQuery, pageNum, 10, 'top-weekly'),
@@ -280,7 +288,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Reels search bar state
+  // Tracks detected aspect ratio ('vertical' = 9:16 Reels size, 'horizontal' = movie 16:9 format)
+  const [orientations, setOrientations] = useState<Record<string, VideoOrientation>>({});
+  // Optional 1-tap vertical fill zoom if a vertical clip is boxed inside its embed
+  const [zoomedIds, setZoomedIds] = useState<Record<string, boolean>>({});
+
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
@@ -292,7 +304,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  // Load saved likes + any previous Reel search terms on mount
   useEffect(() => {
     try {
       const rawLikes = localStorage.getItem(LIKES_KEY);
@@ -323,7 +334,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Outside click closes search suggestions
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
@@ -334,7 +344,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Instant + live autocomplete hints for Reels search bar
   useEffect(() => {
     const trimmed = searchInput.trim();
     if (!showHints || trimmed.length === 0) {
@@ -369,7 +378,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => clearTimeout(timer);
   }, [searchInput, showHints]);
 
-  // Track active visible reel on scroll
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -398,7 +406,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
-  // Infinite scroll for active category or searched topic
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -447,6 +454,21 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, scrollToReel]);
+
+  const handleThumbLoad = (videoId: string, img: HTMLImageElement) => {
+    const { naturalWidth, naturalHeight } = img;
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      const detected: VideoOrientation =
+        naturalHeight > naturalWidth ? 'vertical' : 'horizontal';
+      setOrientations((prev) =>
+        prev[videoId] === detected ? prev : { ...prev, [videoId]: detected }
+      );
+    }
+  };
+
+  const toggleReelZoom = (videoId: string) => {
+    setZoomedIds((prev) => ({ ...prev, [videoId]: !prev[videoId] }));
+  };
 
   const executeReelSearch = async (rawTerm: string) => {
     const clean = rawTerm.trim();
@@ -606,7 +628,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
           </Link>
         </div>
 
-        {/* Compact Reels Search Bar */}
         <div ref={searchWrapRef} className="relative max-w-lg mx-auto mt-2 pointer-events-auto">
           <form onSubmit={handleSearchSubmit} className="relative flex items-center">
             <input
@@ -648,7 +669,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             </button>
           </form>
 
-          {/* Autocomplete Dropdown */}
           {showHints && searchInput.trim().length > 0 && hints.length > 0 && (
             <div className="absolute left-0 right-0 mt-1.5 bg-[#161616]/95 border border-gray-700 rounded-2xl shadow-2xl z-50 max-h-56 overflow-y-auto backdrop-blur-md">
               {hints.map((hint, idx) => {
@@ -678,7 +698,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
           )}
         </div>
 
-        {/* Dynamic Category Pills (Updates when user searches, defaults to Leaked MMS / Desi MMS) */}
         <div className="max-w-lg mx-auto mt-2 flex items-center gap-1.5 overflow-x-auto pointer-events-auto pb-0.5">
           {categoryPills.map((cat) => (
             <button
@@ -744,6 +763,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const isActive = idx === activeIndex;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
+            const orientation = orientations[v.id] || inferInitialOrientation(v);
+            const isVertical = orientation === 'vertical';
+            const isZoomed = Boolean(zoomedIds[v.id]);
 
             return (
               <section
@@ -754,26 +776,62 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 }}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
               >
-                <div className="relative h-[100dvh] w-full sm:max-w-[460px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                {/* Blurred ambient background for horizontal movie-format videos so screen looks rich */}
+                {!isVertical && (
+                  <img
+                    src={v.default_thumb.src}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-25 pointer-events-none"
+                  />
+                )}
+
+                <div
+                  className={`relative h-[100dvh] w-full ${
+                    isVertical ? 'sm:max-w-[460px]' : 'sm:max-w-[680px]'
+                  } bg-black overflow-hidden sm:border-x sm:border-white/10 flex items-center justify-center`}
+                >
+                  {/* Thumbnail Preview: full 9:16 for vertical shorts, natural 16:9 for horizontal movies */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
                     loading={idx <= 1 ? 'eager' : 'lazy'}
-                    className="absolute inset-0 w-full h-full object-cover"
+                    onLoad={(e) => handleThumbLoad(v.id, e.currentTarget)}
+                    className={
+                      isVertical
+                        ? 'absolute inset-0 w-full h-full object-cover'
+                        : 'w-full aspect-video object-cover'
+                    }
                   />
 
+                  {/* Adaptive Player:
+                      - Vertical shot -> Opens in full 9:16 Reels size (and scales cleanly if zoomed)
+                      - Horizontal movie -> Keeps natural 16:9 landscape aspect ratio */}
                   {isActive && (
-                    <div className="absolute inset-0 bg-black z-10 overflow-hidden">
+                    <div
+                      className={
+                        isVertical
+                          ? 'absolute inset-0 bg-black z-10 overflow-hidden'
+                          : 'relative z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl border-y border-white/10'
+                      }
+                    >
                       <iframe
                         key={`reel-frame-${v.id}`}
                         src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`}
-                        className="w-full h-[calc(100%+56px)] -mt-[56px] border-0"
+                        className={
+                          isVertical
+                            ? `w-full h-[calc(100%+56px)] -mt-[56px] border-0 transition-transform duration-200 ${
+                                isZoomed ? 'scale-[1.35] origin-center' : ''
+                              }`
+                            : 'w-full h-[calc(100%+52px)] -mt-[52px] border-0'
+                        }
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                         allowFullScreen
                       />
+
                       <div
                         aria-hidden="true"
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-10 min-w-[170px] sm:min-w-[200px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
+                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-9 min-w-[165px] sm:min-w-[195px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
                       >
                         <span className="text-xs font-black text-[#FF9900]">H</span>
                         <span className="text-xs font-black text-white">UB</span>
@@ -784,7 +842,33 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
 
-                  <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3.5">
+                  {/* Right-Side Action Rail */}
+                  <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3">
+                    {/* Vertical Fit/Zoom Toggle shown for vertical clips so smaller vertical embeds fill 9:16 */}
+                    {isVertical && (
+                      <button
+                        type="button"
+                        onClick={() => toggleReelZoom(v.id)}
+                        aria-label="Toggle reel zoom"
+                        className="flex flex-col items-center gap-1 cursor-pointer group"
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                            isZoomed
+                              ? 'bg-[#FF9900] border-[#FF9900] text-black'
+                              : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
+                          }`}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                          </svg>
+                        </div>
+                        <span className="text-[10px] font-bold drop-shadow">
+                          {isZoomed ? 'Normal' : 'Fill 9:16'}
+                        </span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => toggleLike(v.id)}
@@ -816,7 +900,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
                         </svg>
                       </div>
-                      <span className="text-[10px] font-bold drop-shadow">Full</span>
+                      <span className="text-[10px] font-bold drop-shadow">Watch</span>
                     </Link>
 
                     <button
@@ -858,10 +942,14 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   </div>
 
+                  {/* Bottom Title & Aspect Badge */}
                   <div className="absolute bottom-16 left-3 right-16 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
                         {activeBadgeText}
+                      </span>
+                      <span className="bg-black/75 text-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/15">
+                        {isVertical ? '📱 9:16 REEL' : '🎬 HD WIDESCREEN'}
                       </span>
                       <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
                         ⏱ {duration}
