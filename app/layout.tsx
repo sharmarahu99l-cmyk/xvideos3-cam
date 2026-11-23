@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import AgeGate from './AgeGate';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -7,6 +8,11 @@ export const metadata: Metadata = {
   title: 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3',
   description:
     'Watch latest new Desi videos, Desi porn, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and Hindi audio HD videos streaming free on HubTube (XVideos3.cam).',
+  other: {
+    RATING: 'RTA-5042-1996-1400-1577-RTA',
+    rating: 'adult',
+    'google-adsense-account': 'ca-pub-2014909859491780',
+  },
 };
 
 export default function RootLayout({
@@ -17,10 +23,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-      <meta name="RATING" content="RTA-5042-1996-1400-1577-RTA" />
+        <meta name="RATING" content="RTA-5042-1996-1400-1577-RTA" />
+        <meta name="rating" content="adult" />
         <meta name="google-adsense-account" content="ca-pub-2014909859491780" />
       </head>
       <body className="bg-[#0a0a0a] text-[#ddd]">
+        <AgeGate />
         {children}
 
         {/* JuicyAds PopUnders v3 */}

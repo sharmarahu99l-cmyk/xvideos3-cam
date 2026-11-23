@@ -1,152 +1,43 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-interface EpornerVideo {
-  id?: string;
-  title?: string;
-  default_thumb?: { src?: string };
-  length_min?: number;
-  length_sec?: number;
-  added?: string;
-}
-
-// High-priority Desi & viral search terms indexed first across shards 0-299
-const DESI_PRIORITY_TOPICS = [
-  'desi', 'desi videos', 'desi porn', 'desi mms', 'viral desi', 'new desi',
-  'desi bhabhi', 'indian bhabhi', 'desi aunty', 'indian aunty', 'desi sex',
-  'indian porn', 'indian sex', 'pakistani mms', 'pakistani sex', 'desi chudai',
-  'hindi audio', 'punjabi desi', 'punjabi kudi', 'desi homemade', 'indian homemade',
-  'desi couple', 'desi college girl', 'desi village girl', 'desi saree',
-  'bhabhi devar', 'south indian desi', 'tamil desi', 'telugu desi', 'bengali bhabhi',
-  'marathi bhabhi', 'gujarati aunty', 'mallu aunty', 'bhojpuri desi', 'desi leaked',
-  'desi hidden cam', 'desi suhag raat', 'indian wife', 'indian viral', 'desi hardcore',
+const CHUNK_QUERIES = [
+  'desi', 'mms', 'desi bhabhi', 'indian', 'amateur',
+  '4k', 'homemade', 'milf', 'big tits', 'asian',
 ];
-
-// Full Eporner catalog topics across shards 300-999
-const GLOBAL_CATALOG_TOPICS = [
-  'japanese', 'anal', '1080p', 'teen', 'vr', 'asian', 'big tits', 'shemale',
-  'milf', 'gay', 'ebony', 'homemade', 'interracial', 'amateur', 'lesbian',
-  '60fps', 'big ass', 'pov', 'mature', 'creampie', 'hentai', 'bbw',
-  'hardcore', 'threesome', 'latina', 'big dick', 'pornstar', 'double penetration',
-  'vintage', 'group sex', 'blowjob', 'cumshot', 'masturbation', 'students',
-  'blonde', 'petite', 'orgy', 'webcam', 'office', 'bdsm', 'public',
-  'brunette', 'massage', 'lingerie', 'toys', 'hotel', 'outdoor', 'squirt',
-  'fetish', 'redhead', 'housewives', 'swinger', 'bukkake', 'uniform',
-  'striptease', 'bondage', 'nurses', 'handjob', 'fisting', '4k',
-];
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const shardId = Math.max(0, Math.min(2000, parseInt(id, 10) || 0));
-  const baseUrl = 'https://xvideos3.cam';
-  const now = new Date().toISOString();
-
-  let topic: string;
-  let apiPage: number;
-  let order: string;
-
-  if (shardId < 300) {
-    topic = DESI_PRIORITY_TOPICS[shardId % DESI_PRIORITY_TOPICS.length];
-    apiPage = Math.floor(shardId / DESI_PRIORITY_TOPICS.length) + 1;
-    order = shardId % 2 === 0 ? 'latest' : 'most-popular';
-  } else {
-    const globalIdx = shardId - 300;
-    topic = GLOBAL_CATALOG_TOPICS[globalIdx % GLOBAL_CATALOG_TOPICS.length];
-    apiPage = Math.floor(globalIdx / GLOBAL_CATALOG_TOPICS.length) + 1;
-    order = globalIdx % 2 === 0 ? 'latest' : 'top-rated';
-  }
-
-  const urlBlocks: string[] = [];
-
-  // Shard 0 includes all primary Desi & site landing pages for instant Google crawling
-  if (shardId === 0) {
-    const coreLandingPaths = [
-      '/',
-      '/categories',
-      '/pornstars',
-      ...DESI_PRIORITY_TOPICS.map((t) => `/?q=${encodeURIComponent(t)}`),
-    ];
-    for (const p of coreLandingPaths) {
-      urlBlocks.push(`  <url>
-    <loc>${escapeXml(`${baseUrl}${p}`)}</loc>
-    <lastmod>${now}</lastmod>
-    <changefreq>hourly</changefreq>
-    <priority>${p === '/' ? '1.0' : '0.9'}</priority>
-  </url>`);
-    }
-  }
+  const chunkNum = Math.min(20, Math.max(1, Number(id) || 1));
+  const query = CHUNK_QUERIES[(chunkNum - 1) % CHUNK_QUERIES.length];
+  const apiPage = Math.ceil(chunkNum / CHUNK_QUERIES.length);
+  let urlsXml = '';
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(topic)}&per_page=100&page=${apiPage}&order=${order}&format=json`,
-      {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
-      }
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
+        query
+      )}&per_page=50&page=${apiPage}&order=most-popular&lq=0&format=json`,
+      { next: { revalidate: 86400 } }
     );
-    clearTimeout(timer);
-
     if (res.ok) {
-      const data: { videos?: EpornerVideo[] } = await res.json();
-      const videos = Array.isArray(data.videos) ? data.videos : [];
-
-      for (const v of videos) {
-        if (!v.id || !v.title) continue;
-        const durationSec = (v.length_min || 0) * 60 + (v.length_sec || 0);
-        const safeTitle = escapeXml(v.title.trim().slice(0, 100));
-        const safeDesc = escapeXml(
-          `Watch ${v.title.trim()} full HD Desi & adult video free on HubTube (XVideos3.cam).`
-        );
-        const thumb = v.default_thumb?.src ? escapeXml(v.default_thumb.src) : '';
-
-        urlBlocks.push(`  <url>
-    <loc>${escapeXml(`${baseUrl}/watch/${v.id}`)}</loc>
-    <lastmod>${now}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.85</priority>${
-      thumb
-        ? `
-    <video:video>
-      <video:thumbnail_loc>${thumb}</video:thumbnail_loc>
-      <video:title>${safeTitle}</video:title>
-      <video:description>${safeDesc}</video:description>
-      <video:player_loc>${escapeXml(`https://www.eporner.com/embed/${v.id}/`)}</video:player_loc>
-      <video:duration>${durationSec}</video:duration>
-      <video:family_friendly>no</video:family_friendly>
-    </video:video>`
-        : ''
-    }
-  </url>`);
+      const data = await res.json();
+      if (Array.isArray(data.videos)) {
+        urlsXml = data.videos
+          .filter((v: { id?: string }) => v?.id)
+          .map(
+            (v: { id: string }) =>
+              `<url><loc>https://xvideos3.cam/watch/${encodeURIComponent(v.id)}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>`
+          )
+          .join('');
       }
     }
-  } catch {
-    // Return collected URLs cleanly without breaking XML
-  }
+  } catch {}
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
-${urlBlocks.join('\n')}
-</urlset>`;
-
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlsXml}</urlset>`;
   return new NextResponse(xml, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
-    },
+    headers: { 'Content-Type': 'application/xml; charset=utf-8' },
   });
 }

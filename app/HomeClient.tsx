@@ -14,6 +14,7 @@ import {
   rankAndBlendSimilarVideos,
   normalizeTitleKey,
 } from './lib/userPrefs';
+import { SEO_DESI_HUB_LINKS, toCategorySlug } from './lib/seoData';
 
 type Video = StoredVideo;
 
@@ -30,16 +31,6 @@ interface HomeClientProps {
 
 const PER_PAGE = 30;
 const MAX_PAGES = 200;
-
-const SEO_DESI_HUB_LINKS = [
-  'Desi Videos', 'Desi Porn', 'Desi MMS', 'Viral Desi Videos', 'New Desi Videos',
-  'Desi Bhabhi', 'Indian Bhabhi', 'Desi Aunty', 'Indian Aunty', 'Indian Porn',
-  'Pakistani MMS', 'Pakistani Sex', 'Desi Chudai', 'Hindi Audio Sex', 'Punjabi Desi',
-  'Punjabi Kudi', 'Desi Homemade', 'Indian Homemade', 'Desi Couple', 'Desi College Girl',
-  'Desi Village Girl', 'Desi Saree Sex', 'Bhabhi Devar', 'South Indian Desi', 'Tamil Desi',
-  'Telugu Desi', 'Bengali Bhabhi', 'Marathi Bhabhi', 'Gujarati Aunty', 'Mallu Aunty',
-  'Bhojpuri Desi', 'Desi Leaked Scandal', 'Desi Hidden Cam', 'Desi Suhag Raat', 'Indian Wife',
-];
 
 const INSTANT_DESI = [
   "Desi", "Desi Videos", "Desi Porn", "Desi Bhabhi", "Desi Aunty", "Desi MMS",
@@ -214,35 +205,32 @@ export default function HomeClient({
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  // Always load Trending Desi Videos for the Homepage Reels strip
+  // Always load MMS Videos for the Homepage Reels strip
   useEffect(() => {
     let active = true;
-    const loadTrendingDesiReels = async () => {
-      const [weekly, popular] = await Promise.all([
-        fetchVideos('desi', 1, 12, 'top-weekly'),
-        fetchVideos('desi', 1, 12, 'most-popular'),
+    const loadMmsReels = async () => {
+      const [weekly, latest, popular] = await Promise.all([
+        fetchVideos('mms', 1, 10, 'top-weekly'),
+        fetchVideos('mms', 1, 10, 'latest'),
+        fetchVideos('mms', 1, 10, 'most-popular'),
       ]);
       if (!active) return;
 
       const seen = new Set<string>();
       const merged: Video[] = [];
-      for (const v of [...weekly, ...popular]) {
-        if (validThumb(v) && !seen.has(v.id)) {
-          seen.add(v.id);
-          merged.push(v);
+      const maxLen = Math.max(weekly.length, latest.length, popular.length);
+      for (let i = 0; i < maxLen; i++) {
+        for (const v of [weekly[i], latest[i], popular[i]]) {
+          if (v && validThumb(v) && !seen.has(v.id)) {
+            seen.add(v.id);
+            merged.push(v);
+          }
         }
       }
-
-      merged.sort((a, b) => {
-        const va = Number(String(a.views ?? 0).replace(/[^0-9]/g, '')) || 0;
-        const vb = Number(String(b.views ?? 0).replace(/[^0-9]/g, '')) || 0;
-        return vb - va;
-      });
-
       setTrendingReels(merged.slice(0, 12));
     };
 
-    loadTrendingDesiReels();
+    loadMmsReels();
     return () => {
       active = false;
     };
@@ -700,7 +688,7 @@ export default function HomeClient({
         {/* Top Banner Ad */}
         <JuicyBanner />
 
-        {/* Homepage Trending Desi Reels Shelf */}
+        {/* Homepage MMS Reels Shelf */}
         {reelStripVideos.length > 0 && (
           <section className="mt-6 mb-8 bg-[#121212] border border-gray-800/90 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
@@ -709,7 +697,7 @@ export default function HomeClient({
                   ▶ REELS
                 </span>
                 <h2 className="text-lg md:text-xl font-black text-white">
-                  Trending Desi Reels
+                  MMS Reels
                 </h2>
               </div>
               <Link
@@ -735,7 +723,7 @@ export default function HomeClient({
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-transparent" />
                   <span className="absolute top-2 left-2 bg-black/75 text-[#FF9900] text-[10px] font-black px-2 py-0.5 rounded-full border border-[#FF9900]/40">
-                    🔥 DESI REEL
+                    🔥 MMS REEL
                   </span>
                   <div className="absolute bottom-2.5 left-2.5 right-2.5">
                     <p className="text-white text-xs font-bold line-clamp-2 leading-snug drop-shadow">
@@ -882,6 +870,7 @@ export default function HomeClient({
           <JuicyBanner />
         </div>
 
+        {/* SEO Category Hub + Compliance Footer */}
         <footer className="mt-12 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories
@@ -889,17 +878,40 @@ export default function HomeClient({
           <p className="text-xs text-gray-400 mb-4 leading-relaxed">
             HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mb-8">
             {SEO_DESI_HUB_LINKS.map((term) => (
               <Link
                 key={term}
-                href={`/?q=${encodeURIComponent(term.toLowerCase())}`}
+                href={`/category/${toCategorySlug(term)}`}
                 onClick={scrollTopNow}
                 className="text-xs bg-[#161616] hover:bg-[#FF9900] hover:text-black text-gray-300 px-3 py-1.5 rounded-full border border-gray-800 transition"
               >
                 {term}
               </Link>
             ))}
+          </div>
+
+          <div className="pt-6 border-t border-gray-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-gray-400">
+            <div className="flex flex-wrap items-center gap-4">
+              <Link href="/terms" className="hover:text-[#FF9900] transition">
+                Terms of Service
+              </Link>
+              <Link href="/privacy" className="hover:text-[#FF9900] transition">
+                Privacy Policy
+              </Link>
+              <Link href="/dmca" className="hover:text-[#FF9900] transition">
+                DMCA / Takedown
+              </Link>
+              <Link href="/2257" className="hover:text-[#FF9900] transition">
+                18 U.S.C. § 2257
+              </Link>
+              <Link href="/api/feed.xml" className="hover:text-[#FF9900] transition">
+                MRSS Feed
+              </Link>
+            </div>
+            <p className="text-gray-500">
+              © {new Date().getFullYear()} XVideos3.cam (HubTube) • 18+ Adults Only • RTA-5042-1996-1400-1577-RTA
+            </p>
           </div>
         </footer>
       </div>

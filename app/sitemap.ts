@@ -1,43 +1,27 @@
-import { MetadataRoute } from 'next';
+import type { MetadataRoute } from 'next';
+import { ALL_SITEMAP_CATEGORIES, toCategorySlug } from './lib/seoData';
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://xvideos3.cam';
-  const entries: MetadataRoute.Sitemap = [];
+export const revalidate = 86400;
 
-  // Static pages
-  entries.push(
-    { url: baseUrl, lastModified: new Date(), changeFrequency: 'daily', priority: 1 },
-    { url: `${baseUrl}/categories`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
-    { url: `${baseUrl}/pornstars`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 }
-  );
+export default function sitemap(): MetadataRoute.Sitemap {
+  const base = 'https://xvideos3.cam';
 
-  // Fetch ALL videos (500+ pages × 200 = 100,000+ but we cap at ~10,000)
-  let page = 1;
-  let hasMore = true;
-  while (hasMore && page <= 50) {  // 50 pages × 200 = 10,000 videos
-    try {
-      const res = await fetch(
-        `https://www.eporner.com/api/v2/video/search/?query=&per_page=200&page=${page}&order=latest`,
-        { next: { revalidate: 86400 } }
-      );
-      const data = await res.json();
-      const videos = data.videos || [];
+  const corePages: MetadataRoute.Sitemap = [
+    { url: `${base}/`, changeFrequency: 'hourly', priority: 1 },
+    { url: `${base}/reels`, changeFrequency: 'hourly', priority: 0.95 },
+    { url: `${base}/categories`, changeFrequency: 'daily', priority: 0.85 },
+    { url: `${base}/pornstars`, changeFrequency: 'daily', priority: 0.85 },
+    { url: `${base}/terms`, changeFrequency: 'monthly', priority: 0.3 },
+    { url: `${base}/privacy`, changeFrequency: 'monthly', priority: 0.3 },
+    { url: `${base}/dmca`, changeFrequency: 'monthly', priority: 0.3 },
+    { url: `${base}/2257`, changeFrequency: 'monthly', priority: 0.3 },
+  ];
 
-      if (videos.length === 0) hasMore = false;
+  const categoryPages: MetadataRoute.Sitemap = ALL_SITEMAP_CATEGORIES.map((cat) => ({
+    url: `${base}/category/${toCategorySlug(cat)}`,
+    changeFrequency: 'daily',
+    priority: 0.8,
+  }));
 
-      videos.forEach((v: any) => {
-        entries.push({
-          url: `${baseUrl}/watch/${v.id}`,
-          lastModified: new Date(),
-          changeFrequency: 'daily',
-          priority: 0.9
-        });
-      });
-    } catch (e) {
-      hasMore = false;
-    }
-    page++;
-  }
-
-  return entries;
+  return [...corePages, ...categoryPages];
 }

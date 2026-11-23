@@ -12,6 +12,7 @@ import {
   rankAndBlendSimilarVideos,
   normalizeTitleKey,
 } from '../../lib/userPrefs';
+import { SEO_DESI_HUB_LINKS, toCategorySlug } from '../../lib/seoData';
 
 export type WatchVideo = {
   id: string;
@@ -30,16 +31,6 @@ type SearchHint = {
   label: string;
   type: 'category' | 'pornstar' | 'desi' | 'video';
 };
-
-const SEO_DESI_HUB_LINKS = [
-  'Desi Videos', 'Desi Porn', 'Desi MMS', 'Viral Desi Videos', 'New Desi Videos',
-  'Desi Bhabhi', 'Indian Bhabhi', 'Desi Aunty', 'Indian Aunty', 'Indian Porn',
-  'Pakistani MMS', 'Pakistani Sex', 'Desi Chudai', 'Hindi Audio Sex', 'Punjabi Desi',
-  'Punjabi Kudi', 'Desi Homemade', 'Indian Homemade', 'Desi Couple', 'Desi College Girl',
-  'Desi Village Girl', 'Desi Saree Sex', 'Bhabhi Devar', 'South Indian Desi', 'Tamil Desi',
-  'Telugu Desi', 'Bengali Bhabhi', 'Marathi Bhabhi', 'Gujarati Aunty', 'Mallu Aunty',
-  'Bhojpuri Desi', 'Desi Leaked Scandal', 'Desi Hidden Cam', 'Desi Suhag Raat', 'Indian Wife',
-];
 
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
@@ -109,7 +100,7 @@ export default function WatchClient({
   const suggestAbortRef = useRef<AbortController | null>(null);
 
   const fetchBatch = useCallback(
-    async (query: string, pageNum: number, perPage = 25, order = 'most_viewed'): Promise<WatchVideo[]> => {
+    async (query: string, pageNum: number, perPage = 25, order = 'most-popular'): Promise<WatchVideo[]> => {
       try {
         const res = await fetch(
           `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${encodeURIComponent(order)}`
@@ -124,7 +115,7 @@ export default function WatchClient({
 
       try {
         const direct = await fetch(
-          `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&thumbsize=big&format=json`
+          `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`
         );
         if (direct.ok) {
           const data = await direct.json();
@@ -165,7 +156,7 @@ export default function WatchClient({
 
       const batches = await Promise.all(
         queriesToRun.map((q, idx) =>
-          fetchBatch(q, pageNum, topicFilter !== 'ALL' ? 30 : 18, idx === 0 ? 'most_viewed' : 'top-rated')
+          fetchBatch(q, pageNum, topicFilter !== 'ALL' ? 30 : 18, idx === 0 ? 'most-popular' : 'top-rated')
         )
       );
 
@@ -476,7 +467,6 @@ export default function WatchClient({
           poster={video?.default_thumb?.src}
         />
 
-        {/* Banner Ad Below Player */}
         <JuicyBanner />
 
         <div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
@@ -503,25 +493,27 @@ export default function WatchClient({
                 Video Tags
               </h3>
               <div className="flex flex-wrap gap-2">
-                {tagList.map((tag) => (
-                  <Link
-                    key={tag}
-                    href={`/?q=${encodeURIComponent(tag)}`}
-                    onClick={scrollTopNow}
-                    className="bg-[#222] hover:bg-[#FF9900] hover:text-black text-xs font-semibold px-3 py-1.5 rounded-full transition"
-                  >
-                    #{tag}
-                  </Link>
-                ))}
+                {tagList.map((tag) => {
+                  const slug = toCategorySlug(tag);
+                  if (!slug) return null;
+                  return (
+                    <Link
+                      key={tag}
+                      href={`/category/${slug}`}
+                      onClick={scrollTopNow}
+                      className="bg-[#222] hover:bg-[#FF9900] hover:text-black text-xs font-semibold px-3 py-1.5 rounded-full transition"
+                    >
+                      #{tag}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
-        {/* Banner Ad Below Video Details */}
         <JuicyBanner adzone={1133788} width={308} height={286} />
 
-        {/* Smart Multi-Topic Similar Videos Section */}
         <section id="similar-videos-section" className="mt-10">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h2 className="text-[#FF9900] text-xl md:text-2xl font-black">
@@ -577,7 +569,6 @@ export default function WatchClient({
 
               {related.length > 15 && (
                 <>
-                  {/* Mid-Similar Banner Ad */}
                   <div className="my-8">
                     <JuicyBanner />
                   </div>
@@ -594,7 +585,6 @@ export default function WatchClient({
           )}
         </section>
 
-        {/* Bottom Pagination Only */}
         <div className="mt-10 flex justify-center items-center gap-3">
           <button
             onClick={() => handleRelatedPageChange(relatedPage - 1)}
@@ -614,11 +604,11 @@ export default function WatchClient({
           </button>
         </div>
 
-        {/* Pre-Footer Banner Ad */}
         <div className="mt-10">
           <JuicyBanner adzone={1133788} width={308} height={286} />
         </div>
 
+        {/* SEO Category Hub + Compliance Footer */}
         <footer className="mt-12 pt-8 border-t border-gray-800">
           <h2 className="text-lg font-black text-[#FF9900] mb-3">
             Popular Desi Videos, Viral MMS &amp; HD Categories
@@ -626,17 +616,40 @@ export default function WatchClient({
           <p className="text-xs text-gray-400 mb-4 leading-relaxed">
             HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mb-8">
             {SEO_DESI_HUB_LINKS.map((term) => (
               <Link
                 key={term}
-                href={`/?q=${encodeURIComponent(term.toLowerCase())}`}
+                href={`/category/${toCategorySlug(term)}`}
                 onClick={scrollTopNow}
                 className="text-xs bg-[#161616] hover:bg-[#FF9900] hover:text-black text-gray-300 px-3 py-1.5 rounded-full border border-gray-800 transition"
               >
                 {term}
               </Link>
             ))}
+          </div>
+
+          <div className="pt-6 border-t border-gray-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-gray-400">
+            <div className="flex flex-wrap items-center gap-4">
+              <Link href="/terms" className="hover:text-[#FF9900] transition">
+                Terms of Service
+              </Link>
+              <Link href="/privacy" className="hover:text-[#FF9900] transition">
+                Privacy Policy
+              </Link>
+              <Link href="/dmca" className="hover:text-[#FF9900] transition">
+                DMCA / Takedown
+              </Link>
+              <Link href="/2257" className="hover:text-[#FF9900] transition">
+                18 U.S.C. § 2257
+              </Link>
+              <Link href="/api/feed.xml" className="hover:text-[#FF9900] transition">
+                MRSS Feed
+              </Link>
+            </div>
+            <p className="text-gray-500">
+              © {new Date().getFullYear()} XVideos3.cam (HubTube) • 18+ Adults Only • RTA-5042-1996-1400-1577-RTA
+            </p>
           </div>
         </footer>
       </div>

@@ -6,16 +6,24 @@ async function getVideoById(id: string): Promise<WatchVideo | null> {
     const res = await fetch(
       `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`,
       {
-        next: { revalidate: 3600 },
+        next: { revalidate: 1800 },
         headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36' },
       }
     );
     if (!res.ok) return null;
-    const data = await res.json();
-    return data && data.id ? (data as WatchVideo) : null;
+    const data: WatchVideo = await res.json();
+    return data?.id ? data : null;
   } catch {
     return null;
   }
+}
+
+function toIsoDuration(lengthSec?: number | string): string {
+  const total = Math.max(1, Number(lengthSec) || 60);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = Math.floor(total % 60);
+  return `PT${hrs > 0 ? `${hrs}H` : ''}${mins}M${secs}S`;
 }
 
 export async function generateMetadata({
@@ -25,36 +33,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const video = await getVideoById(id);
-
   const title = video?.title
     ? `${video.title} | HubTube - XVideos3 HD`
-    : 'Watch Free HD Desi & Adult Video | HubTube - XVideos3';
-
-  const description = video?.title
-    ? `Watch ${video.title} full HD video streaming free on HubTube (XVideos3.cam). Fast HD playback, viral Desi MMS, and Indian porn videos.`
-    : 'Watch free HD Desi porn, viral MMS, and 4K adult videos streaming fast on HubTube (XVideos3.cam).';
-
-  const thumb = video?.default_thumb?.src;
-
+    : 'Watch Free HD Video | HubTube - XVideos3';
   return {
     title,
-    description,
-    alternates: {
-      canonical: `/watch/${id}`,
-    },
-    openGraph: {
-      type: 'video.other',
-      title,
-      description,
-      url: `https://xvideos3.cam/watch/${id}`,
-      ...(thumb ? { images: [{ url: thumb }] } : {}),
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      ...(thumb ? { images: [thumb] } : {}),
-    },
+    description: `Stream ${video?.title || 'HD Desi and viral videos'} free on HubTube (XVideos3.cam).`,
+    alternates: { canonical: `/watch/${encodeURIComponent(id)}` },
   };
 }
 
@@ -64,35 +49,41 @@ export default async function WatchPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const video = await getVideoById(id);
-const durationSeconds =
-  Number(video?.length_sec) || (Number(video?.length_min) || 0) * 60;
+  const initialVideo = await getVideoById(id);
 
-  const durationIso = `PT${Math.max(1, durationSeconds)}S`;
-
-  const videoSchema = video
+  const jsonLd = initialVideo
     ? {
         '@context': 'https://schema.org',
         '@type': 'VideoObject',
-        name: video.title,
-        description: `Watch ${video.title} full HD video on HubTube (XVideos3.cam).`,
-        thumbnailUrl: video.default_thumb?.src ? [video.default_thumb.src] : [],
-        uploadDate: video.added || new Date().toISOString(),
-        duration: durationIso,
-        embedUrl: `https://www.eporner.com/embed/${id}/`,
-        contentUrl: `https://xvideos3.cam/watch/${id}`,
+        name: initialVideo.title,
+        description: `Watch ${initialVideo.title} in free HD on HubTube (XVideos3.cam).`,
+        thumbnailUrl: initialVideo.default_thumb?.src
+          ? [initialVideo.default_thumb.src]
+          : undefined,
+        uploadDate: initialVideo.added
+          ? new Date(initialVideo.added).toISOString()
+          : '2026-01-01T00:00:00Z',
+        duration: toIsoDuration(initialVideo.length_sec),
+        embedUrl: `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
+        contentUrl: `https://xvideos3.cam/watch/${encodeURIComponent(id)}`,
+        interactionStatistic: {
+          '@type': 'InteractionCounter',
+          interactionType: { '@type': 'WatchAction' },
+          userInteractionCount:
+            Number(String(initialVideo.views ?? 1000).replace(/[^0-9]/g, '')) || 1000,
+        },
       }
     : null;
 
   return (
     <>
-      {videoSchema && (
+      {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(videoSchema) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       )}
-      <WatchClient id={id} initialVideo={video} />
+      <WatchClient id={id} initialVideo={initialVideo} />
     </>
   );
 }
