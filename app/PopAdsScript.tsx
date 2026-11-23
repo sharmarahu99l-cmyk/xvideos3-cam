@@ -6,7 +6,6 @@ export default function PopAdsScript() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Never trigger popunders on search engine or aggregator crawlers
     const ua = navigator.userAgent.toLowerCase();
     const isBot =
       /bot|crawl|spider|slurp|yandex|bingpreview|mediapartners|adsbot|google|duckduckgo|baidu/i.test(
@@ -14,16 +13,20 @@ export default function PopAdsScript() {
       ) || Boolean((navigator as Navigator & { webdriver?: boolean }).webdriver);
 
     if (isBot) return;
+    if (document.getElementById('hubtube-popads-injected')) return;
 
-    // Prevent duplicate injection across client route transitions
-    if (document.getElementById('hubtube-popads-script')) return;
+    const marker = document.createElement('meta');
+    marker.id = 'hubtube-popads-injected';
+    document.head.appendChild(marker);
 
-    const script = document.createElement('script');
-    script.id = 'hubtube-popads-script';
-    script.src = '/api/popads';
-    script.async = true;
-    script.setAttribute('data-cfasync', 'false');
-    document.head.appendChild(script);
+    fetch('/api/popads')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { code?: string } | null) => {
+        if (!data?.code) return;
+        const fragment = document.createRange().createContextualFragment(data.code);
+        document.body.appendChild(fragment);
+      })
+      .catch(() => {});
   }, []);
 
   return null;

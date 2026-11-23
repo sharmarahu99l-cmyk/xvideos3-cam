@@ -25,8 +25,6 @@ interface ReelCategoryPill {
   query: string;
 }
 
-type VideoOrientation = 'vertical' | 'horizontal';
-
 const FOR_YOU_KEY = '__for_you_fresh__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
 const SEEN_REELS_KEY = 'hubtube_seen_reels_v1';
@@ -191,18 +189,6 @@ function deriveTopPillsFromVideos(
   }
 
   return pills;
-}
-
-function inferInitialOrientation(v: ReelVideo): VideoOrientation {
-  const firstThumb = v?.thumbs?.[0];
-  if (firstThumb?.width && firstThumb?.height) {
-    return firstThumb.height > firstThumb.width ? 'vertical' : 'horizontal';
-  }
-  const text = `${v?.title || ''} ${v?.keywords || ''}`.toLowerCase();
-  if (/\b(vertical|9:16|shorts|tiktok|reels)\b/.test(text)) {
-    return 'vertical';
-  }
-  return 'horizontal';
 }
 
 function getInstantReelHints(query: string): SearchHint[] {
@@ -370,12 +356,15 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Persistent sound preference across all reels (Unmute once -> stays unmuted until muted manually)
+  // Persistent Sound State: once unmuted, stays unmuted across every reel until muted manually
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
-  const [orientations, setOrientations] = useState<Record<string, VideoOrientation>>({});
-  const [fillVerticalIds, setFillVerticalIds] = useState<Record<string, boolean>>({});
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isBuffering, setIsBuffering] = useState<boolean>(true);
+  const [progress, setProgress] = useState<number>(0);
+  const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover');
+  const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
 
-  // Search bar resets empty on refresh
+  // Search bar always resets empty on refresh
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
@@ -383,11 +372,14 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   const feedRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLElement | null>>([]);
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const loadingMoreRef = useRef<boolean>(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapRef = useRef<number>(0);
 
+  // Restore saved likes + global sound preference on mount
   useEffect(() => {
     try {
       const rawLikes = localStorage.getItem(LIKES_KEY);
@@ -409,6 +401,50 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Automatically play the active native <video> and pause all others
+  useEffect(() => {
+    const currentVideo = videos[activeIndex];
+    setIsPaused(false);
+    setProgress(0);
+    setIsBuffering(true);
+
+    Object.entries(videoRefs.current).forEach(([vidId, el]) => {
+      if (!el) return;
+      if (currentVideo && vidId === currentVideo.id) {
+        el.muted = !isUnmuted;
+        el.currentTime = 0;
+        const playPromise = el.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsBuffering(false);
+            })
+            .catch(() => {
+              // If browser autoplay policy requires a user gesture before audio,
+              // start muted immediately so video plays without clicking twice,
+              // and unmute automatically on the very next tap
+              el.muted = true;
+              el.play()
+                .then(() => setIsBuffering(false))
+                .catch(() => {});
+            });
+        }
+      } else {
+        el.pause();
+      }
+    });
+  }, [activeIndex, videos]);
+
+  // Keep mute state synced whenever user toggles Sound On / Unmute
+  useEffect(() => {
+    const currentVideo = videos[activeIndex];
+    if (!currentVideo) return;
+    const el = videoRefs.current[currentVideo.id];
+    if (el) {
+      el.muted = !isUnmuted;
+    }
+  }, [isUnmuted, activeIndex, videos]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -454,7 +490,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => clearTimeout(timer);
   }, [searchInput, showHints]);
 
-  // Stable scroll-snap index tracking (never bounces or resets active video mid-play)
   const handleFeedScroll = () => {
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
@@ -466,10 +501,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       if (nextIdx >= 0 && nextIdx < videos.length && nextIdx !== activeIndex) {
         setActiveIndex(nextIdx);
       }
-    }, 90);
+    }, 80);
   };
 
-  // Infinite scroll when nearing the end
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -519,31 +553,77 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, scrollToReel]);
 
-  const handleThumbLoad = (videoId: string, img: HTMLImageElement) => {
-    const { naturalWidth, naturalHeight } = img;
-    if (naturalWidth > 0 && naturalHeight > 0) {
-      const detected: VideoOrientation =
-        naturalHeight > naturalWidth ? 'vertical' : 'horizontal';
-      setOrientations((prev) =>
-        prev[videoId] === detected ? prev : { ...prev, [videoId]: detected }
-      );
+  // Global Sound Toggle: once unmuted, stays unmuted across all reels until muted manually
+  const toggleGlobalSound = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const nextUnmuted = !isUnmuted;
+    setIsUnmuted(nextUnmuted);
+    try {
+      localStorage.setItem(UNMUTED_PREF_KEY, String(nextUnmuted));
+    } catch {}
+
+    const currentVideo = videos[activeIndex];
+    if (currentVideo) {
+      const el = videoRefs.current[currentVideo.id];
+      if (el) {
+        el.muted = !nextUnmuted;
+        if (el.paused) {
+          el.play().catch(() => {});
+          setIsPaused(false);
+        }
+      }
+    }
+
+    setToast(nextUnmuted ? '🔊 Sound On for all reels' : '🔇 Muted');
+    setTimeout(() => setToast(''), 1500);
+  };
+
+  // Single tap pauses/resumes; double tap likes (just like Instagram/TikTok Reels)
+  const handleReelSurfaceTap = (video: ReelVideo) => {
+    const now = Date.now();
+    const isDoubleTap = now - lastTapRef.current < 280;
+    lastTapRef.current = now;
+
+    if (isDoubleTap) {
+      setLikedIds((prev) => {
+        const next = { ...prev, [video.id]: true };
+        try {
+          localStorage.setItem(LIKES_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      setHeartBurstId(video.id);
+      setTimeout(() => setHeartBurstId(null), 700);
+      return;
+    }
+
+    const el = videoRefs.current[video.id];
+    if (!el) return;
+
+    if (isUnmuted && el.muted) {
+      el.muted = false;
+      el.play().catch(() => {});
+      setIsPaused(false);
+      return;
+    }
+
+    if (el.paused) {
+      el.play().catch(() => {});
+      setIsPaused(false);
+    } else {
+      el.pause();
+      setIsPaused(true);
     }
   };
 
-  const toggleGlobalSound = () => {
-    setIsUnmuted((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(UNMUTED_PREF_KEY, String(next));
-      } catch {}
-      setToast(next ? '🔊 Unmuted for all reels' : '🔇 Muted');
-      setTimeout(() => setToast(''), 1600);
-      return next;
-    });
-  };
-
-  const toggleFillVertical = (videoId: string) => {
-    setFillVerticalIds((prev) => ({ ...prev, [videoId]: !prev[videoId] }));
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>, videoId: string) => {
+    e.stopPropagation();
+    const val = Number(e.target.value);
+    setProgress(val);
+    const el = videoRefs.current[videoId];
+    if (el && el.duration && !Number.isNaN(el.duration)) {
+      el.currentTime = (val / 100) * el.duration;
+    }
   };
 
   const executeReelSearch = async (rawTerm: string) => {
@@ -624,7 +704,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   };
 
-  const toggleLike = (videoId: string) => {
+  const toggleLike = (e: React.MouseEvent, videoId: string) => {
+    e.stopPropagation();
     setLikedIds((prev) => {
       const next = { ...prev, [videoId]: !prev[videoId] };
       try {
@@ -634,7 +715,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     });
   };
 
-  const handleShare = async (video: ReelVideo) => {
+  const handleShare = async (e: React.MouseEvent, video: ReelVideo) => {
+    e.stopPropagation();
     const url = `${window.location.origin}/reels?start=${encodeURIComponent(video.id)}`;
     if (navigator.share) {
       try {
@@ -656,12 +738,12 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
-      {/* Sleek Top Overlay: Home + HUBREELS + Sound Toggle + Compact Search + Dynamic Topic Pills */}
-      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/95 via-black/70 to-transparent pt-2.5 pb-4 px-3 pointer-events-none">
+      {/* Sleek Top Overlay */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/55 to-transparent pt-2.5 pb-4 px-3 pointer-events-none">
         <div className="max-w-md mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
             href="/"
-            className="flex items-center gap-1 bg-black/65 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
+            className="flex items-center gap-1 bg-black/55 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
           >
             <span>←</span>
             <span>HOME</span>
@@ -702,7 +784,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               onKeyDown={handleSearchKeyDown}
               placeholder="Search reels..."
               autoComplete="off"
-              className="w-full bg-black/70 border border-white/20 focus:border-[#FF9900] rounded-full pl-3.5 pr-14 py-1.5 text-xs text-white placeholder-gray-300 backdrop-blur-md outline-none"
+              className="w-full bg-black/65 border border-white/20 focus:border-[#FF9900] rounded-full pl-3.5 pr-14 py-1.5 text-xs text-white placeholder-gray-300 backdrop-blur-md outline-none"
             />
             {searchInput && (
               <button
@@ -765,7 +847,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 backdrop-blur-md transition border cursor-pointer ${
                 activeCategory === cat.query
                   ? 'bg-[#FF9900] text-black border-[#FF9900]'
-                  : 'bg-black/60 text-gray-200 border-white/15 hover:border-[#FF9900]'
+                  : 'bg-black/55 text-gray-200 border-white/15 hover:border-[#FF9900]'
               }`}
             >
               {cat.label}
@@ -810,20 +892,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         >
           {videos.map((v, idx) => {
             const isActive = idx === activeIndex;
-            const isNext = idx === activeIndex + 1;
-            const shouldMountPlayer = isActive || isNext;
+            const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
-            const orientation = orientations[v.id] || inferInitialOrientation(v);
-            const isVertical = orientation === 'vertical';
-            const isFilled = Boolean(fillVerticalIds[v.id]);
-
-            // Autoplay only on active slide; pre-buffer next slide so swipe transitions instantly
-            const embedSrc = isActive
-              ? `https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1${
-                  isUnmuted ? '&muted=0' : '&muted=1'
-                }`
-              : `https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=0&muted=1`;
 
             return (
               <section
@@ -832,85 +903,112 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 ref={(el) => {
                   itemRefs.current[idx] = el;
                 }}
-                className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
+                onClick={() => handleReelSurfaceTap(v)}
+                className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden cursor-pointer"
               >
-                {/* Ambient blurred backdrop for widescreen clips */}
-                {!isVertical && (
+                <div className="relative h-[100dvh] w-full sm:max-w-[430px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                  {/* Blurred Backdrop */}
                   <img
                     src={v.default_thumb.src}
                     alt=""
                     aria-hidden="true"
-                    className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-30 pointer-events-none"
+                    className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-35 pointer-events-none"
                   />
-                )}
 
-                <div
-                  className={`relative h-[100dvh] w-full ${
-                    isVertical ? 'sm:max-w-[440px]' : 'sm:max-w-[660px]'
-                  } bg-black overflow-hidden sm:border-x sm:border-white/10 flex items-center justify-center`}
-                >
-                  {/* Thumbnail Preview */}
+                  {/* Poster Preview */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
                     loading={idx <= 2 ? 'eager' : 'lazy'}
-                    onLoad={(e) => handleThumbLoad(v.id, e.currentTarget)}
-                    className={
-                      isVertical
-                        ? 'absolute inset-0 w-full h-full object-cover'
-                        : 'w-full aspect-video object-cover'
-                    }
+                    className={`absolute inset-0 w-full h-full ${
+                      fitMode === 'cover' ? 'object-cover' : 'object-contain'
+                    }`}
                   />
 
-                  {/* Pre-buffered & Active Embed Player */}
-                  {shouldMountPlayer && (
-                    <div
-                      className={
-                        isVertical
-                          ? 'absolute inset-0 bg-black z-10 overflow-hidden'
-                          : 'relative z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl'
-                      }
-                    >
-                      <iframe
-                        key={`embed-${v.id}-${isActive ? (isUnmuted ? 'unmuted' : 'muted') : 'preload'}`}
-                        src={embedSrc}
-                        className={`w-full h-full border-0 transition-transform duration-200 ${
-                          isVertical && isFilled ? 'scale-[1.4] origin-center' : ''
-                        }`}
-                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                        allowFullScreen
-                      />
+                  {/* Native HTML5 <video> Player Streaming via Proxy — Zero Eporner Pause Screen */}
+                  {shouldMountVideo && (
+                    <video
+                      ref={(el) => {
+                        videoRefs.current[v.id] = el;
+                      }}
+                      src={`/api/reel-stream/${encodeURIComponent(v.id)}`}
+                      poster={v.default_thumb.src}
+                      playsInline
+                      autoPlay={isActive}
+                      loop
+                      preload={isActive ? 'auto' : 'metadata'}
+                      muted={!isUnmuted}
+                      onPlaying={() => {
+                        if (isActive) setIsBuffering(false);
+                      }}
+                      onWaiting={() => {
+                        if (isActive) setIsBuffering(true);
+                      }}
+                      onTimeUpdate={(e) => {
+                        if (!isActive) return;
+                        const el = e.currentTarget;
+                        if (el.duration && !Number.isNaN(el.duration)) {
+                          setProgress((el.currentTime / el.duration) * 100);
+                        }
+                      }}
+                      onError={() => {
+                        if (isActive && idx + 1 < videos.length) {
+                          scrollToReel(idx + 1);
+                        }
+                      }}
+                      className={`absolute inset-0 w-full h-full z-10 ${
+                        fitMode === 'cover' ? 'object-cover' : 'object-contain'
+                      }`}
+                    />
+                  )}
 
-                      {/* Covers bottom-center host watermark while leaving seek bar & controls clickable */}
-                      <div
-                        aria-hidden="true"
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-8 min-w-[165px] sm:min-w-[195px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
-                      >
-                        <span className="text-xs font-black text-[#FF9900]">H</span>
-                        <span className="text-xs font-black text-white">UB</span>
-                        <span className="text-xs font-black text-[#FF9900]">REELS</span>
+                  {/* Spinner only while initial stream chunks buffer */}
+                  {isActive && isBuffering && !isPaused && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                      <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {/* Center Pause Icon (Only appears when user manually taps to pause) */}
+                  {isActive && isPaused && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                      <div className="w-16 h-16 rounded-full bg-black/65 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
                       </div>
                     </div>
                   )}
 
-                  {/* Top & Bottom Readability Gradients */}
+                  {/* Double-Tap Heart Animation */}
+                  {heartBurstId === v.id && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-ping">
+                      <svg viewBox="0 0 24 24" fill="#ef4444" className="w-24 h-24 drop-shadow-2xl">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                      </svg>
+                    </div>
+                  )}
+
+                  {/* Gradients */}
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
-                  <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/85 via-black/35 to-transparent pointer-events-none z-20" />
+                  <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-20" />
 
                   {/* Right-Side Reels Action Rail */}
-                  <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3">
-                    {/* Global Unmute / Mute Toggle */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4"
+                  >
                     <button
                       type="button"
-                      onClick={toggleGlobalSound}
-                      aria-label={isUnmuted ? 'Mute all reels' : 'Unmute all reels'}
+                      onClick={(e) => toggleGlobalSound(e)}
+                      aria-label={isUnmuted ? 'Mute reels' : 'Unmute reels'}
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isUnmuted
                             ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-lg'
-                            : 'bg-black/60 border-white/25 text-white group-hover:border-[#FF9900]'
+                            : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
                         {isUnmuted ? (
@@ -932,43 +1030,17 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
-                    {/* Fill 9:16 Zoom Toggle for Vertical Clips */}
-                    {isVertical && (
-                      <button
-                        type="button"
-                        onClick={() => toggleFillVertical(v.id)}
-                        aria-label="Fill vertical frame"
-                        className="flex flex-col items-center gap-1 cursor-pointer group"
-                      >
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
-                            isFilled
-                              ? 'bg-[#FF9900] border-[#FF9900] text-black'
-                              : 'bg-black/60 border-white/25 text-white group-hover:border-[#FF9900]'
-                          }`}
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                          </svg>
-                        </div>
-                        <span className="text-[10px] font-bold drop-shadow">
-                          {isFilled ? 'Normal' : 'Fill 9:16'}
-                        </span>
-                      </button>
-                    )}
-
-                    {/* Like */}
                     <button
                       type="button"
-                      onClick={() => toggleLike(v.id)}
+                      onClick={(e) => toggleLike(e, v.id)}
                       aria-label="Like reel"
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isLiked
                             ? 'bg-red-500 border-red-400 text-white scale-110'
-                            : 'bg-black/60 border-white/25 text-white group-hover:border-[#FF9900]'
+                            : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -980,27 +1052,29 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
-                    {/* Open Full Watch Page */}
-                    <Link
-                      href={`/watch/${v.id}`}
-                      className="flex flex-col items-center gap-1 group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-black/60 border border-white/25 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">Watch</span>
-                    </Link>
-
-                    {/* Share */}
                     <button
                       type="button"
-                      onClick={() => handleShare(v)}
+                      onClick={() => setFitMode((m) => (m === 'cover' ? 'contain' : 'cover'))}
+                      aria-label="Toggle video fit"
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {fitMode === 'cover' ? 'Full Fit' : 'Wide'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => handleShare(e, v)}
                       aria-label="Share reel"
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-black/60 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
                           <circle cx="18" cy="5" r="3" />
                           <circle cx="6" cy="12" r="3" />
@@ -1012,7 +1086,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Share</span>
                     </button>
 
-                    {/* Next / Previous Reel Buttons */}
+                    <Link
+                      href={`/watch/${v.id}`}
+                      className="flex flex-col items-center gap-1 group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">Full</span>
+                    </Link>
+
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
                       <button
                         type="button"
@@ -1034,13 +1119,13 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   </div>
 
-                  {/* Bottom Title & Metadata */}
-                  <div className="absolute bottom-14 left-3.5 right-16 z-30 pointer-events-none">
+                  {/* Bottom Title */}
+                  <div className="absolute bottom-7 left-3.5 right-16 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
                         {activeBadgeText}
                       </span>
-                      <span className="bg-black/65 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
+                      <span className="bg-black/60 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
                         ⏱ {duration}
                       </span>
                       {v.views !== undefined && (
@@ -1053,6 +1138,23 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     <h2 className="text-white text-sm font-bold line-clamp-2 drop-shadow-md leading-snug">
                       {v.title}
                     </h2>
+                  </div>
+
+                  {/* Bottom Seek Scrub Bar */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
+                  >
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={isActive ? progress : 0}
+                      onChange={(e) => handleSeek(e, v.id)}
+                      aria-label="Seek reel"
+                      className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
+                    />
                   </div>
                 </div>
               </section>
