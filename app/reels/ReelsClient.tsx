@@ -356,15 +356,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
+  // Tracks IDs where direct MP4 proxy failed so they smoothly use embed fallback without jumping/bouncing
+  const [fallbackEmbedIds, setFallbackEmbedIds] = useState<Record<string, boolean>>({});
+
   // Persistent Sound State: once unmuted, stays unmuted across every reel until muted manually
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [isBuffering, setIsBuffering] = useState<boolean>(true);
+  const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover');
   const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
 
-  // Search bar always resets empty on refresh
+  // Search bar resets empty on refresh
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
@@ -376,7 +379,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const loadingMoreRef = useRef<boolean>(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
-  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticScrollLockRef = useRef<boolean>(false);
   const lastTapRef = useRef<number>(0);
 
   // Restore saved likes + global sound preference on mount
@@ -402,18 +405,26 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Automatically play the active native <video> and pause all others
+  // Automatically play the active native <video> and pause all others (never auto-scrolls on error)
   useEffect(() => {
     const currentVideo = videos[activeIndex];
     setIsPaused(false);
     setProgress(0);
-    setIsBuffering(true);
+
+    if (!currentVideo) return;
+
+    const usesFallback = Boolean(fallbackEmbedIds[currentVideo.id]);
+    setIsBuffering(!usesFallback);
+
+    // Safety timeout so loading spinner never stays stuck on screen
+    const spinnerTimeout = setTimeout(() => {
+      setIsBuffering(false);
+    }, 2200);
 
     Object.entries(videoRefs.current).forEach(([vidId, el]) => {
       if (!el) return;
-      if (currentVideo && vidId === currentVideo.id) {
+      if (vidId === currentVideo.id && !usesFallback) {
         el.muted = !isUnmuted;
-        el.currentTime = 0;
         const playPromise = el.play();
         if (playPromise !== undefined) {
           playPromise
@@ -421,20 +432,19 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               setIsBuffering(false);
             })
             .catch(() => {
-              // If browser autoplay policy requires a user gesture before audio,
-              // start muted immediately so video plays without clicking twice,
-              // and unmute automatically on the very next tap
               el.muted = true;
               el.play()
                 .then(() => setIsBuffering(false))
-                .catch(() => {});
+                .catch(() => setIsBuffering(false));
             });
         }
       } else {
         el.pause();
       }
     });
-  }, [activeIndex, videos]);
+
+    return () => clearTimeout(spinnerTimeout);
+  }, [activeIndex, videos, fallbackEmbedIds]);
 
   // Keep mute state synced whenever user toggles Sound On / Unmute
   useEffect(() => {
@@ -490,20 +500,37 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => clearTimeout(timer);
   }, [searchInput, showHints]);
 
-  const handleFeedScroll = () => {
-    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
-    scrollTimerRef.current = setTimeout(() => {
-      const container = feedRef.current;
-      if (!container) return;
-      const vh = container.clientHeight || window.innerHeight;
-      if (vh <= 0) return;
-      const nextIdx = Math.round(container.scrollTop / vh);
-      if (nextIdx >= 0 && nextIdx < videos.length && nextIdx !== activeIndex) {
-        setActiveIndex(nextIdx);
-      }
-    }, 80);
-  };
+  // Clean IntersectionObserver for manual swipe detection (locked during button smooth-scroll so it never bounces)
+  useEffect(() => {
+    const container = feedRef.current;
+    if (!container || videos.length === 0) return;
 
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (programmaticScrollLockRef.current) return;
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
+            const idx = Number((entry.target as HTMLElement).dataset.index);
+            if (!Number.isNaN(idx)) {
+              setActiveIndex(idx);
+            }
+          }
+        }
+      },
+      {
+        root: container,
+        threshold: 0.65,
+      }
+    );
+
+    itemRefs.current.forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [videos]);
+
+  // Infinite scroll when nearing the end of the feed
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -529,11 +556,16 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const scrollToReel = useCallback(
     (targetIdx: number) => {
       const safe = Math.max(0, Math.min(videos.length - 1, targetIdx));
-      setActiveIndex(safe);
       const el = itemRefs.current[safe];
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      if (!el) return;
+
+      programmaticScrollLockRef.current = true;
+      setActiveIndex(safe);
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      setTimeout(() => {
+        programmaticScrollLockRef.current = false;
+      }, 550);
     },
     [videos.length]
   );
@@ -553,7 +585,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, scrollToReel]);
 
-  // Global Sound Toggle: once unmuted, stays unmuted across all reels until muted manually
   const toggleGlobalSound = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     const nextUnmuted = !isUnmuted;
@@ -578,7 +609,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setTimeout(() => setToast(''), 1500);
   };
 
-  // Single tap pauses/resumes; double tap likes (just like Instagram/TikTok Reels)
   const handleReelSurfaceTap = (video: ReelVideo) => {
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current < 280;
@@ -887,7 +917,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       ) : (
         <div
           ref={feedRef}
-          onScroll={handleFeedScroll}
           className="h-[100dvh] w-full overflow-y-scroll snap-y snap-mandatory"
         >
           {videos.map((v, idx) => {
@@ -895,6 +924,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
+            const useEmbedFallback = Boolean(fallbackEmbedIds[v.id]);
 
             return (
               <section
@@ -903,10 +933,10 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 ref={(el) => {
                   itemRefs.current[idx] = el;
                 }}
-                onClick={() => handleReelSurfaceTap(v)}
+                onClick={() => !useEmbedFallback && handleReelSurfaceTap(v)}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden cursor-pointer"
               >
-                <div className="relative h-[100dvh] w-full sm:max-w-[430px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                <div className="relative h-[100dvh] w-full sm:max-w-[430px] bg-black overflow-hidden sm:border-x sm:border-white/10 flex items-center justify-center">
                   {/* Blurred Backdrop */}
                   <img
                     src={v.default_thumb.src}
@@ -925,8 +955,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     }`}
                   />
 
-                  {/* Native HTML5 <video> Player Streaming via Proxy — Zero Eporner Pause Screen */}
-                  {shouldMountVideo && (
+                  {/* Primary Native HTML5 <video> Stream */}
+                  {shouldMountVideo && !useEmbedFallback && (
                     <video
                       ref={(el) => {
                         videoRefs.current[v.id] = el;
@@ -938,6 +968,12 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       loop
                       preload={isActive ? 'auto' : 'metadata'}
                       muted={!isUnmuted}
+                      onLoadedData={() => {
+                        if (isActive) setIsBuffering(false);
+                      }}
+                      onCanPlay={() => {
+                        if (isActive) setIsBuffering(false);
+                      }}
                       onPlaying={() => {
                         if (isActive) setIsBuffering(false);
                       }}
@@ -952,9 +988,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         }
                       }}
                       onError={() => {
-                        if (isActive && idx + 1 < videos.length) {
-                          scrollToReel(idx + 1);
-                        }
+                        // Switch only this video to clean embed fallback without bouncing or scrolling the feed
+                        setIsBuffering(false);
+                        setFallbackEmbedIds((prev) => ({ ...prev, [v.id]: true }));
                       }}
                       className={`absolute inset-0 w-full h-full z-10 ${
                         fitMode === 'cover' ? 'object-cover' : 'object-contain'
@@ -962,15 +998,30 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     />
                   )}
 
-                  {/* Spinner only while initial stream chunks buffer */}
-                  {isActive && isBuffering && !isPaused && (
+                  {/* Automatic Fallback Player if MP4 stream is unavailable for this video */}
+                  {isActive && useEmbedFallback && (
+                    <div className="relative z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl">
+                      <iframe
+                        key={`fallback-${v.id}-${isUnmuted ? 'u' : 'm'}`}
+                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1${
+                          isUnmuted ? '&muted=0' : '&muted=1'
+                        }`}
+                        className="w-full h-full border-0"
+                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+
+                  {/* Brief Spinner only while initial stream buffers */}
+                  {isActive && isBuffering && !isPaused && !useEmbedFallback && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
 
-                  {/* Center Pause Icon (Only appears when user manually taps to pause) */}
-                  {isActive && isPaused && (
+                  {/* Center Pause Icon (Only when tapped to pause) */}
+                  {isActive && isPaused && !useEmbedFallback && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="w-16 h-16 rounded-full bg-black/65 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
@@ -1140,22 +1191,24 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </h2>
                   </div>
 
-                  {/* Bottom Seek Scrub Bar */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
-                  >
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={isActive ? progress : 0}
-                      onChange={(e) => handleSeek(e, v.id)}
-                      aria-label="Seek reel"
-                      className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
-                    />
-                  </div>
+                  {/* Bottom Seek Scrub Bar (Shown for native video streams) */}
+                  {!useEmbedFallback && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
+                    >
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={isActive ? progress : 0}
+                        onChange={(e) => handleSeek(e, v.id)}
+                        aria-label="Seek reel"
+                        className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
+                      />
+                    </div>
+                  )}
                 </div>
               </section>
             );

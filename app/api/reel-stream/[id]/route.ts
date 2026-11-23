@@ -4,10 +4,10 @@ const EMBED_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
   Referer: 'https://www.eporner.com/',
 };
 
-// In-memory cache of resolved MP4 URLs (1 hour TTL)
 const resolvedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
 function convertBase36Hash(hexHash: string): string {
@@ -36,18 +36,18 @@ async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
 
     const html = await embedRes.text();
 
-    // 1. Check direct MP4 in embed HTML
-    const directMatch = html.match(/https?:\/\/[^"'\\\s]+\.mp4[^"'\\\s]*/i);
+    // 1. Check for direct MP4 URL in embed HTML
+    const directMatch = html.match(/https?:\/\/[^"'\\\s<>]+\.mp4[^"'\\\s<>]*/i);
     if (directMatch?.[0]) {
-      const cleanUrl = directMatch[0].replace(/&amp;/g, '&');
+      const cleanUrl = directMatch[0].replace(/&amp;/g, '&').replace(/\\\//g, '/');
       resolvedUrlCache.set(videoId, { url: cleanUrl, expiresAt: now + 3600_000 });
       return cleanUrl;
     }
 
-    // 2. Extract 32-char hex hash and query Eporner's XHR video source endpoint
+    // 2. Match 32-char hex hash across JS variable, object property, or JSON formats
     const hashMatch =
-      html.match(/hash\s*[:=]\s*['"]([a-f0-9]{32})['"]/i) ||
-      html.match(/vid\s*[:=]\s*['"][^'"]+['"][\s\S]{0,250}?hash\s*[:=]\s*['"]([a-f0-9]{32})['"]/i);
+      html.match(/["']?hash["']?\s*[:=]\s*["']([a-f0-9]{32})["']/i) ||
+      html.match(/([a-f0-9]{32})/i);
 
     if (hashMatch?.[1]) {
       const encodedHash = convertBase36Hash(hashMatch[1]);
@@ -70,8 +70,7 @@ async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
         const json = await xhrRes.json();
         const mp4Sources = json?.sources?.mp4;
         if (mp4Sources && typeof mp4Sources === 'object') {
-          // Prefer fast-loading 480p/720p first for instant Reel autoplay
-          const order = ['480p', '720p', '360p', '1080p', '240p'];
+          const order = ['480p', '360p', '720p', '240p', '1080p'];
           for (const q of order) {
             const src = mp4Sources[q]?.src;
             if (typeof src === 'string' && src.startsWith('http')) {
@@ -119,7 +118,6 @@ export async function GET(
 
   let videoRes = await fetch(mp4Url, { headers: upstreamHeaders, cache: 'no-store' });
 
-  // If cached URL expired, re-resolve once
   if (videoRes.status === 403 || videoRes.status === 410) {
     resolvedUrlCache.delete(cleanId);
     mp4Url = await resolveEpornerMp4Url(cleanId);
