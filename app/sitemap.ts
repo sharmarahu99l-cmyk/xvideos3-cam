@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { ALL_SITEMAP_CATEGORIES, toCategorySlug } from './lib/seoData';
+import { ALL_SITEMAP_CATEGORIES, ALL_PORNSTARS, toCategorySlug, toPornstarSlug } from './lib/seoData';
 
 export const revalidate = 86400;
 
@@ -23,5 +23,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.8,
   }));
 
-  return [...corePages, ...categoryPages];
+  const pornstarPages: MetadataRoute.Sitemap = ALL_PORNSTARS.map((star) => ({
+    url: `${base}/pornstar/${toPornstarSlug(star)}`,
+    changeFrequency: 'daily',
+    priority: 0.8,
+  }));
+
+  return [...corePages, ...categoryPages, ...pornstarPages];
 }

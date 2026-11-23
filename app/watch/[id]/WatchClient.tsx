@@ -142,7 +142,7 @@ export default function WatchClient({
     []
   );
 
-  const loadSmartSimilar = useCallback(
+ const loadSmartSimilar = useCallback(
     async (
       targetVideo: WatchVideo | null,
       pageNum: number,
@@ -153,32 +153,46 @@ export default function WatchClient({
       const ctx = extractSmartTopics(targetVideo?.title || id, targetVideo?.keywords || '');
       setDetectedTopics(ctx.topics);
 
-      let queriesToRun: string[] = [];
-      let rankingTopics: string[] = ctx.topics;
-
-      if (topicFilter !== 'ALL') {
-        queriesToRun = [topicFilter];
-        rankingTopics = [topicFilter];
-      } else {
-        const qSet = new Set<string>();
-        if (ctx.topics.length >= 2) qSet.add(ctx.comboQuery);
-        for (const t of ctx.topics.slice(0, 3)) {
-          qSet.add(t);
-        }
-        queriesToRun = Array.from(qSet);
-      }
-
-      const batches = await Promise.all(
-        queriesToRun.map((q, idx) =>
-          fetchBatch(q, pageNum, topicFilter !== 'ALL' ? 30 : 18, idx === 0 ? 'most-popular' : 'top-rated')
-        )
-      );
-
       const excludeIds = new Set<string>([id]);
       const excludeTitles = new Set<string>(
         targetVideo?.title ? [normalizeTitleKey(targetVideo.title)] : []
       );
-      const blended = rankAndBlendSimilarVideos(batches, rankingTopics, excludeIds, excludeTitles, 25);
+
+      if (topicFilter !== 'ALL') {
+        // Fetch targeted results specifically for the clicked keyword using 2 different sort orders
+        const [popularForTopic, topRatedForTopic] = await Promise.all([
+          fetchBatch(topicFilter, pageNum, 20, 'most-popular'),
+          fetchBatch(topicFilter, pageNum, 20, 'top-rated'),
+        ]);
+        const blended = rankAndBlendSimilarVideos(
+          [popularForTopic, topRatedForTopic],
+          [topicFilter],
+          excludeIds,
+          excludeTitles,
+          25
+        );
+        setRelated(blended);
+        setLoadingRelated(false);
+        return;
+      }
+
+      // For ALL: fetch each distinct topic with varied sort orders & pages so every pill gives unique variety
+      const topicsToQuery = ctx.topics.slice(0, 4);
+      const sortModes = ['most-popular', 'top-rated', 'top-weekly', 'latest'];
+
+      const batches = await Promise.all(
+        topicsToQuery.map((topic, idx) =>
+          fetchBatch(topic, pageNum + (idx % 2), 14, sortModes[idx % sortModes.length])
+        )
+      );
+
+      const blended = rankAndBlendSimilarVideos(
+        batches,
+        topicsToQuery,
+        excludeIds,
+        excludeTitles,
+        25
+      );
       setRelated(blended);
       setLoadingRelated(false);
     },
@@ -284,12 +298,16 @@ export default function WatchClient({
     scrollTopNow();
   };
 
-  const goSearch = (term: string) => {
+  const goSearch = (term: string, hintType?: SearchHint['type']) => {
     setShowHints(false);
     scrollTopNow();
     const trimmed = term.trim();
     if (!trimmed) return;
     const slug = toCategorySlug(trimmed);
+    if (hintType === 'pornstar' && slug) {
+      router.push(`/pornstar/${slug}`);
+      return;
+    }
     if (slug && trimmed.split(/\s+/).length <= 4) {
       router.push(`/category/${slug}`);
     } else {

@@ -191,13 +191,14 @@ export default function HomeClient({
   const router = useRouter();
   const pathname = usePathname() || '/';
   const isCategoryRoute = pathname.startsWith('/category/');
+  const isPornstarRoute = pathname.startsWith('/pornstar/');
+  const isSubListingRoute = isCategoryRoute || isPornstarRoute;
 
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
 
-  // Show the full MMS Reels shelf ONLY on the main homepage (Page 1, no search/category filter)
-  const isMainHomepage = !isCategoryRoute && !urlQuery.trim() && urlPage === 1;
-
+  // Show the full MMS Reels shelf ONLY on the main homepage (Page 1, no search/category/pornstar filter)
+  const isMainHomepage = !isSubListingRoute && !urlQuery.trim() && urlPage === 1;
   const validInitial = initialVideos.filter(validThumb);
   const hasSSRMatch =
     validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
@@ -258,14 +259,14 @@ export default function HomeClient({
       setSearchQuery(urlQuery);
       setPage(urlPage);
 
-      if (urlQuery.trim()) {
+     if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
-        if (!isCategoryRoute) {
+        if (!isSubListingRoute) {
           document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
         }
-      } else if (urlPage > 1 && !isCategoryRoute) {
+      } else if (urlPage > 1 && !isSubListingRoute) {
         document.title = `Trending Desi Videos, Viral MMS & HD Porn - Page ${urlPage} | HubTube XVideos3`;
-      } else if (!isCategoryRoute) {
+      } else if (!isSubListingRoute) {
         document.title = 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube XVideos3';
       }
 
@@ -381,9 +382,16 @@ export default function HomeClient({
     navigateToSearch(searchQuery, 1);
   };
 
-  const handleHintSelect = (label: string) => {
-    setSearchQuery(label);
-    navigateToSearch(label, 1);
+ const handleHintSelect = (hint: SearchHint) => {
+    setSearchQuery(hint.label);
+    if (hint.type === 'pornstar') {
+      setShowHints(false);
+      setShowMenu(false);
+      scrollTopNow();
+      router.push(`/pornstar/${toCategorySlug(hint.label)}`, { scroll: true });
+      return;
+    }
+    navigateToSearch(hint.label, 1);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -401,7 +409,7 @@ export default function HomeClient({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (activeHintIdx >= 0 && hints[activeHintIdx]) {
-        handleHintSelect(hints[activeHintIdx].label);
+        handleHintSelect(hints[activeHintIdx]);
       } else {
         handleSearch();
       }
@@ -413,7 +421,7 @@ export default function HomeClient({
   // Builds real crawlable <a href="..."> URLs for Googlebot, Bingbot & Yandex
   const getPageHref = (pageNum: number): string => {
     const safePage = Math.min(MAX_PAGES, Math.max(1, pageNum));
-    if (isCategoryRoute) {
+    if (isSubListingRoute) {
       return safePage > 1 ? `${pathname}?page=${safePage}` : pathname;
     }
     const trimmed = urlQuery.trim();
@@ -585,7 +593,7 @@ export default function HomeClient({
                       type="button"
                       onMouseDown={(e) => {
                         e.preventDefault();
-                        handleHintSelect(hint.label);
+                        handleHintSelect(hint);
                       }}
                       className={`w-full px-4 py-2.5 text-left flex items-center justify-between gap-3 border-b border-gray-800/60 transition ${
                         idx === activeHintIdx
