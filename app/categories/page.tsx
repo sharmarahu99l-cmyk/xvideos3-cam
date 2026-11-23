@@ -1,242 +1,71 @@
-'use client';
-
-import { useState, useEffect, useRef } from 'react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { toCategorySlug } from '../lib/seoData';
 
-interface Category {
-  name: string;
-  count: string;
-  query?: string;
-}
+export const metadata: Metadata = {
+  title: 'All Porn Categories & Desi Video Tags | HubTube - XVideos3',
+  description:
+    'Browse all HD porn categories, Desi videos, Bhabhi, Aunty, MMS, Amateur, 4K, and VR categories on HubTube (XVideos3.cam).',
+  alternates: { canonical: '/categories' },
+};
 
-const categoriesList: Category[] = [
-  { name: "Japanese", count: "20,000+" },
-  { name: "Anal", count: "20,000+" },
-  { name: "HD Porn 1080p", count: "20,000+", query: "1080p" },
-  { name: "Teen", count: "20,000+" },
-  { name: "VR Porn", count: "14,492", query: "vr" },
-  { name: "Asian", count: "20,000+" },
-  { name: "Big Tits", count: "20,000+" },
-  { name: "Shemale", count: "10,875" },
-  { name: "MILF", count: "20,000+" },
-  { name: "Gay", count: "10,000+" },
-  { name: "Ebony", count: "20,000+" },
-  { name: "Homemade", count: "20,000+" },
-  { name: "Indian", count: "20,000+" },
-  { name: "Interracial", count: "20,000+" },
-  { name: "Amateur", count: "20,000+" },
-  { name: "Lesbian", count: "20,000+" },
-  { name: "60 FPS", count: "20,000+", query: "60fps" },
-  { name: "Big Ass", count: "20,000+" },
-  { name: "POV", count: "20,000+" },
-  { name: "Mature", count: "20,000+" },
-  { name: "Creampie", count: "20,000+" },
-  { name: "Hentai", count: "9,826" },
-  { name: "BBW", count: "20,000+" },
-  { name: "Hardcore", count: "20,000+" },
-  { name: "Threesome", count: "20,000+" },
-  { name: "Latina", count: "20,000+" },
-  { name: "Big Dick", count: "20,000+" },
-  { name: "Pornstar", count: "20,000+" },
-  { name: "Double Penetration", count: "20,000+" },
-  { name: "Vintage", count: "20,000+" },
-  { name: "Group Sex", count: "20,000+" },
-  { name: "Blowjob", count: "20,000+" },
-  { name: "Cumshot", count: "20,000+" },
-  { name: "Masturbation", count: "20,000+" },
-  { name: "Students", count: "20,000+", query: "college student" },
-  { name: "Blonde", count: "20,000+" },
-  { name: "Petite", count: "20,000+" },
-  { name: "Orgy", count: "20,000+" },
-  { name: "Webcam", count: "20,000+" },
-  { name: "Office", count: "20,000+" },
-  { name: "BDSM", count: "16,802" },
-  { name: "Public", count: "20,000+" },
-  { name: "Brunette", count: "20,000+" },
-  { name: "Older Men", count: "20,000+" },
-  { name: "Massage", count: "20,000+" },
-  { name: "Lingerie", count: "20,000+" },
-  { name: "Toys", count: "20,000+", query: "sex toys" },
-  { name: "Hotel", count: "20,000+" },
-  { name: "Fat", count: "20,000+", query: "chubby" },
-  { name: "Outdoor", count: "20,000+" },
-  { name: "Squirt", count: "20,000+" },
-  { name: "Fetish", count: "20,000+" },
-  { name: "Redhead", count: "20,000+" },
-  { name: "Housewives", count: "20,000+", query: "housewife" },
-  { name: "Sleep", count: "20,000+", query: "sleeping" },
-  { name: "Small Tits", count: "20,000+" },
-  { name: "Swinger", count: "20,000+" },
-  { name: "Bukkake", count: "15,680" },
-  { name: "Uniform", count: "20,000+" },
-  { name: "Striptease", count: "20,000+" },
-  { name: "Bondage", count: "17,146" },
-  { name: "For Women", count: "20,000+", query: "romantic passionate" },
-  { name: "Nurses", count: "20,000+", query: "nurse" },
-  { name: "Handjob", count: "14,981" },
-  { name: "Fisting", count: "20,000+" },
-  { name: "HQ Porn", count: "20,000+", query: "4k" },
-  { name: "Bisexual", count: "20,000+" },
-  { name: "HD Sex", count: "20,000+", query: "hd" },
-  { name: "Footjob", count: "14,981" },
-  { name: "ASMR", count: "20,000+" },
-  { name: "Doctor", count: "12,580" },
+const CATEGORIES = [
+  'Desi', 'Desi Bhabhi', 'Desi Aunty', 'MMS', 'Viral Desi MMS', 'Indian',
+  'Hindi Audio Sex', 'Homemade', 'Amateur', '1080p', '4K', '60 FPS',
+  'Asian', 'Japanese', 'Anal', 'Teen', 'VR Porn', 'Big Tits', 'Big Ass',
+  'MILF', 'POV', 'Creampie', 'Hardcore', 'Threesome', 'Latina', 'Ebony',
+  'Interracial', 'Lesbian', 'Blowjob', 'Cumshot', 'Masturbation', 'Blonde',
+  'Brunette', 'Redhead', 'Petite', 'BBW', 'Massage', 'Public', 'Office',
+  'Lingerie', 'Squirt', 'Fetish', 'BDSM', 'Solo', 'Top Rated',
 ];
-
-const usedThumbs = new Set<string>();
-let activeCatFetches = 0;
-const catQueue: Array<() => void> = [];
-
-function enqueueCatFetch<T>(task: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const run = () => {
-      activeCatFetches++;
-      task()
-        .then(resolve)
-        .catch(reject)
-        .finally(() => {
-          activeCatFetches--;
-          const next = catQueue.shift();
-          if (next) next();
-        });
-    };
-
-    if (activeCatFetches < 5) {
-      run();
-    } else {
-      catQueue.push(run);
-    }
-  });
-}
-
-async function fetchCategoryThumbs(cat: Category): Promise<string[]> {
-  const searchTerm = cat.query || cat.name;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000);
-  try {
-    const res = await fetch(`/api/thumb?q=${encodeURIComponent(searchTerm)}&type=category`, {
-      signal: controller.signal,
-    });
-    if (!res.ok) return [];
-    const data: { thumbs?: string[] } = await res.json();
-    return Array.isArray(data.thumbs) ? data.thumbs : [];
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function CategoryCard({ cat }: { cat: Category }) {
-  const [candidates, setCandidates] = useState<string[]>([]);
-  const [idx, setIdx] = useState<number>(0);
-  const [done, setDone] = useState<boolean>(false);
-  const [isVisible, setIsVisible] = useState<boolean>(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '300px' }
-    );
-
-    if (cardRef.current) observer.observe(cardRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!isVisible) return;
-    let active = true;
-
-    const cacheKey = `cat_thumb_v3_${cat.name}`;
-    try {
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached) {
-        usedThumbs.add(cached);
-        setCandidates([cached]);
-        setDone(true);
-        return;
-      }
-    } catch {
-      // Ignore storage errors
-    }
-
-    enqueueCatFetch(() => fetchCategoryThumbs(cat)).then((thumbs) => {
-      if (!active) return;
-      if (thumbs.length > 0) {
-        // Put unused thumbnails first so categories don't duplicate images
-        const ordered = [
-          ...thumbs.filter((t) => !usedThumbs.has(t)),
-          ...thumbs.filter((t) => usedThumbs.has(t)),
-        ];
-        usedThumbs.add(ordered[0]);
-        setCandidates(ordered);
-        try {
-          sessionStorage.setItem(cacheKey, ordered[0]);
-        } catch {
-          // Ignore storage errors
-        }
-      }
-      setDone(true);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [isVisible, cat]);
-
-  const currentImg = candidates[idx];
-
-  return (
-    <div ref={cardRef}>
-      <Link href={`/?q=${encodeURIComponent(cat.name)}`} className="block group">
-        <div className="relative rounded-3xl overflow-hidden aspect-square bg-[#1a1a1a]">
-          {currentImg ? (
-            <img
-              src={currentImg}
-              alt={cat.name}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              onError={() => setIdx((prev) => prev + 1)}
-              className="w-full h-full object-cover transition-transform group-hover:scale-105"
-            />
-          ) : done ? (
-            <div className="w-full h-full bg-gradient-to-br from-[#262626] to-[#111] flex items-center justify-center text-3xl font-bold text-[#FF9900]/70">
-              {cat.name.charAt(0)}
-            </div>
-          ) : (
-            <div className="w-full h-full bg-[#222] animate-pulse" />
-          )}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-            <p className="text-white text-center font-semibold text-lg">{cat.name}</p>
-            <p className="text-[#FF9900] text-center text-sm mt-1">{cat.count} Videos</p>
-          </div>
-        </div>
-      </Link>
-    </div>
-  );
-}
 
 export default function CategoriesPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
-      <header className="bg-[#111] p-4 flex items-center justify-between sticky top-0 z-50">
-        <button onClick={() => window.history.back()} className="text-3xl text-[#FF9900]">←</button>
-        <h1 className="text-2xl font-bold text-[#FF9900]">Categories</h1>
+      <header className="bg-[#111] px-4 py-3 border-b border-gray-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <Link href="/" className="text-3xl font-black tracking-tighter">
+            <span className="text-[#FF9900]">H</span>
+            <span className="text-white">UB</span>
+            <span className="text-[#FF9900]">T</span>
+            <span className="text-white">UBE</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/reels"
+              className="bg-[#FF9900] text-black font-black text-xs px-3.5 py-2 rounded-full"
+            >
+              ▶ REELS
+            </Link>
+            <Link
+              href="/"
+              className="text-sm font-bold bg-[#222] hover:bg-[#FF9900] hover:text-black px-4 py-2 rounded-full transition"
+            >
+              ← Home
+            </Link>
+          </div>
+        </div>
       </header>
 
-      <div className="p-4">
-        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-          {categoriesList.map((cat) => (
-            <CategoryCard key={cat.name} cat={cat} />
-          ))}
+      <main className="max-w-7xl mx-auto px-4 py-10">
+        <h1 className="text-2xl md:text-3xl font-black text-[#FF9900] mb-6">
+          Browse All Categories
+        </h1>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {CATEGORIES.map((cat) => {
+            const slug = toCategorySlug(cat);
+            return (
+              <Link
+                key={cat}
+                href={`/category/${slug}`}
+                className="bg-[#141414] hover:bg-[#FF9900] text-gray-100 hover:text-black border border-gray-800 hover:border-[#FF9900] rounded-2xl p-4 font-bold text-center transition shadow"
+              >
+                {cat}
+              </Link>
+            );
+          })}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
