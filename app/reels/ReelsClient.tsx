@@ -30,6 +30,7 @@ type VideoOrientation = 'vertical' | 'horizontal';
 const FOR_YOU_KEY = '__for_you_fresh__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
 const SEEN_REELS_KEY = 'hubtube_seen_reels_v1';
+const UNMUTED_PREF_KEY = 'hubtube_reels_unmuted_v1';
 
 const TOPIC_ROTATION_POOL = [
   'mms', 'leaked mms', 'desi mms', 'desi bhabhi', 'viral', 'indian homemade',
@@ -106,7 +107,6 @@ function rememberSeenIds(ids: string[]) {
   } catch {}
 }
 
-// Extracts dynamic top hint pills directly from the currently loaded videos
 function deriveTopPillsFromVideos(
   list: ReelVideo[],
   activeSearch: string
@@ -126,7 +126,6 @@ function deriveTopPillsFromVideos(
   const freq = new Map<string, number>();
 
   for (const v of list.slice(0, 20)) {
-    // 1. Score clean tags from video keywords
     if (v.keywords) {
       for (const rawTag of v.keywords.split(',')) {
         const clean = rawTag
@@ -144,7 +143,6 @@ function deriveTopPillsFromVideos(
       }
     }
 
-    // 2. Score strong words from video titles
     const titleWords = (v.title || '')
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
@@ -162,7 +160,6 @@ function deriveTopPillsFromVideos(
 
   for (const topic of rankedTopics) {
     if (seen.has(topic)) continue;
-    // Avoid adding a 1-word duplicate if a 2-word pill already contains it
     const overlaps = Array.from(seen).some(
       (s) => s !== FOR_YOU_KEY && (s.includes(topic) || topic.includes(s))
     );
@@ -179,7 +176,6 @@ function deriveTopPillsFromVideos(
     if (pills.length >= 8) break;
   }
 
-  // Ensure at least 6 pills if metadata was sparse
   for (const fallback of shuffleArray(TOPIC_ROTATION_POOL)) {
     if (pills.length >= 7) break;
     if (!seen.has(fallback)) {
@@ -303,7 +299,7 @@ async function fetchSingleOrder(
 async function fetchFreshUniqueBatch(
   categoryQuery: string,
   sessionExcludeIds: Set<string>,
-  isInitialRefresh: boolean = false
+  isFirstPage: boolean = false
 ): Promise<ReelVideo[]> {
   const storedSeen = getSeenIds();
   const orders: Array<'top-weekly' | 'latest' | 'most-popular'> = [
@@ -323,8 +319,7 @@ async function fetchFreshUniqueBatch(
       })
     );
   } else {
-    // Specific searched term or dynamic pill: pull from 2 different pages/orders for variety
-    const pageA = isInitialRefresh ? 1 : Math.floor(Math.random() * 5) + 1;
+    const pageA = isFirstPage ? 1 : Math.floor(Math.random() * 5) + 1;
     const pageB = pageA + 1;
     batches = await Promise.all([
       fetchSingleOrder(categoryQuery, pageA, 15, 'most-popular'),
@@ -356,7 +351,6 @@ async function fetchFreshUniqueBatch(
     }
   }
 
-  // Prefer strictly never-before-seen videos first; only use fallback if topic pool is small
   const finalList = shuffleArray(
     freshUnseen.length >= 6 ? freshUnseen : [...freshUnseen, ...fallbackSeen]
   );
@@ -366,22 +360,27 @@ async function fetchFreshUniqueBatch(
 }
 
 export default function ReelsClient({ initialVideos }: { initialVideos: ReelVideo[] }) {
-  const [videos, setVideos] = useState<ReelVideo[]>(initialVideos.filter(validThumb));
+  const validInitial = initialVideos.filter(validThumb);
+
+  const [videos, setVideos] = useState<ReelVideo[]>(validInitial);
   const [activeCategory, setActiveCategory] = useState<string>(FOR_YOU_KEY);
   const [activeSearchQuery, setActiveSearchQuery] = useState<string>('');
   const [dynamicPills, setDynamicPills] = useState<ReelCategoryPill[]>(() =>
-    deriveTopPillsFromVideos(initialVideos.filter(validThumb), '')
+    deriveTopPillsFromVideos(validInitial, '')
   );
   const [activeIndex, setActiveIndex] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(validInitial.length === 0);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
+  // Global Unmute state: once unmuted, stays unmuted across all reels until manually muted again
+  const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
+
   const [orientations, setOrientations] = useState<Record<string, VideoOrientation>>({});
   const [zoomedIds, setZoomedIds] = useState<Record<string, boolean>>({});
 
-  // Search bar always starts empty on every page refresh
+  // Search input resets empty on every page refresh
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
@@ -393,53 +392,26 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  // On EVERY page refresh:
-  // 1. Automatically reset any search query & input
-  // 2. Fetch brand-new unseen videos (skipping previously seen IDs)
-  // 3. Regenerate fresh top hint pills from what loaded
+  // Restore saved likes + sound preference, and record initial SSR videos as seen
   useEffect(() => {
-    let active = true;
-
     try {
       const rawLikes = localStorage.getItem(LIKES_KEY);
       if (rawLikes) setLikedIds(JSON.parse(rawLikes));
+
+      const rawUnmuted = localStorage.getItem(UNMUTED_PREF_KEY);
+      if (rawUnmuted === 'true') setIsUnmuted(true);
     } catch {}
 
-    setSearchInput('');
-    setActiveSearchQuery('');
-    setActiveCategory(FOR_YOU_KEY);
-    setActiveIndex(0);
-
-    const loadRefreshedFeed = async () => {
+    if (validInitial.length > 0) {
+      rememberSeenIds(validInitial.map((v) => v.id));
+    } else {
       setLoading(true);
-      const startVideo =
-        typeof window !== 'undefined' && window.location.search.includes('start=')
-          ? initialVideos[0]
-          : undefined;
-
-      const exclude = new Set<string>(startVideo ? [startVideo.id] : []);
-      const freshBatch = await fetchFreshUniqueBatch(FOR_YOU_KEY, exclude, true);
-      if (!active) return;
-
-      const finalVideos =
-        startVideo && validThumb(startVideo)
-          ? [startVideo, ...freshBatch.filter((v) => v.id !== startVideo.id)]
-          : freshBatch;
-
-      const resolved = finalVideos.length > 0 ? finalVideos : initialVideos.filter(validThumb);
-      setVideos(resolved);
-      setDynamicPills(deriveTopPillsFromVideos(resolved, ''));
-      setLoading(false);
-
-      if (feedRef.current) {
-        feedRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-      }
-    };
-
-    loadRefreshedFeed();
-    return () => {
-      active = false;
-    };
+      fetchFreshUniqueBatch(FOR_YOU_KEY, new Set(), true).then((batch) => {
+        setVideos(batch);
+        setDynamicPills(deriveTopPillsFromVideos(batch, ''));
+        setLoading(false);
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -515,7 +487,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
-  // Infinite scroll: loads more unseen, non-repeating videos
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -575,11 +546,22 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   };
 
+  const toggleGlobalSound = () => {
+    setIsUnmuted((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(UNMUTED_PREF_KEY, String(next));
+      } catch {}
+      setToast(next ? '🔊 Sound Unmuted for all reels' : '🔇 Reels Muted');
+      setTimeout(() => setToast(''), 1800);
+      return next;
+    });
+  };
+
   const toggleReelZoom = (videoId: string) => {
     setZoomedIds((prev) => ({ ...prev, [videoId]: !prev[videoId] }));
   };
 
-  // Search on Reels (session-only; refreshing the page resets it automatically)
   const executeReelSearch = async (rawTerm: string) => {
     const clean = rawTerm.trim();
     setShowHints(false);
@@ -846,6 +828,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const isVertical = orientation === 'vertical';
             const isZoomed = Boolean(zoomedIds[v.id]);
 
+            // Clean Eporner embed URL so center Play button & controls always render reliably
+            const embedUrl = isUnmuted
+              ? `https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1`
+              : `https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`;
+
             return (
               <section
                 key={`${v.id}-${idx}`}
@@ -869,6 +856,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     isVertical ? 'sm:max-w-[460px]' : 'sm:max-w-[680px]'
                   } bg-black overflow-hidden sm:border-x sm:border-white/10 flex items-center justify-center`}
                 >
+                  {/* Thumbnail Preview */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
@@ -881,31 +869,29 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     }
                   />
 
+                  {/* Stable Active Player Container (never unmounts when orientation updates) */}
                   {isActive && (
                     <div
+                      key={`reel-player-${v.id}`}
                       className={
                         isVertical
                           ? 'absolute inset-0 bg-black z-10 overflow-hidden'
-                          : 'relative z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl border-y border-white/10'
+                          : 'absolute inset-x-0 top-1/2 -translate-y-1/2 z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl border-y border-white/10'
                       }
                     >
                       <iframe
-                        key={`reel-frame-${v.id}`}
-                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`}
-                        className={
-                          isVertical
-                            ? `w-full h-[calc(100%+56px)] -mt-[56px] border-0 transition-transform duration-200 ${
-                                isZoomed ? 'scale-[1.35] origin-center' : ''
-                              }`
-                            : 'w-full h-[calc(100%+52px)] -mt-[52px] border-0'
-                        }
+                        src={embedUrl}
+                        className={`w-full h-full border-0 transition-transform duration-200 ${
+                          isVertical && isZoomed ? 'scale-[1.35] origin-center' : ''
+                        }`}
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                         allowFullScreen
                       />
 
+                      {/* Covers only bottom-center host watermark without shifting or blocking Play / Seek Bar */}
                       <div
                         aria-hidden="true"
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-9 min-w-[165px] sm:min-w-[195px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
+                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-8 min-w-[160px] sm:min-w-[190px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
                       >
                         <span className="text-xs font-black text-[#FF9900]">H</span>
                         <span className="text-xs font-black text-white">UB</span>
@@ -916,7 +902,41 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
 
+                  {/* Right-Side Action Rail */}
                   <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3">
+                    {/* Global Sound Unmute / Mute Toggle (Persists across all reels) */}
+                    <button
+                      type="button"
+                      onClick={toggleGlobalSound}
+                      aria-label={isUnmuted ? 'Mute all reels' : 'Unmute all reels'}
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                          isUnmuted
+                            ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-lg'
+                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
+                        }`}
+                      >
+                        {isUnmuted ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <line x1="23" y1="9" x2="17" y2="15" />
+                            <line x1="17" y1="9" x2="23" y2="15" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {isUnmuted ? 'Sound On' : 'Unmute'}
+                      </span>
+                    </button>
+
                     {isVertical && (
                       <button
                         type="button"
@@ -1014,6 +1034,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   </div>
 
+                  {/* Bottom Title & Aspect Badge */}
                   <div className="absolute bottom-16 left-3 right-16 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
