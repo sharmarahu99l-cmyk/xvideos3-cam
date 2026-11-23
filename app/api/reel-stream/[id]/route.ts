@@ -1,107 +1,154 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const EMBED_HEADERS = {
+const BROWSER_HEADERS = {
   'User-Agent':
-    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
-  Referer: 'https://www.eporner.com/',
 };
 
-const resolvedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const mp4Cache = new Map<string, { url: string; referer: string; expiresAt: number }>();
 
-function convertBase36Hash(hexHash: string): string {
-  if (!/^[a-f0-9]{32}$/i.test(hexHash)) return hexHash;
-  let out = '';
-  for (let i = 0; i < 32; i += 8) {
-    const chunk = parseInt(hexHash.slice(i, i + 8), 16);
-    out += chunk.toString(36);
+function pickBestMp4FromDefinitions(
+  defs: Array<{ format?: string; quality?: string | number; videoUrl?: string }>
+): string | null {
+  const mp4s = defs.filter(
+    (d) =>
+      d &&
+      (d.format === 'mp4' || String(d.videoUrl || '').includes('.mp4')) &&
+      typeof d.videoUrl === 'string' &&
+      d.videoUrl.startsWith('http')
+  );
+  if (mp4s.length === 0) return null;
+
+  // Prefer fast mobile/HD 480p or 720p first so Reels start playing immediately
+  const preferredQualities = ['480', '720', '360', '240', '1080'];
+  for (const q of preferredQualities) {
+    const match = mp4s.find((d) => String(d.quality || '').includes(q));
+    if (match?.videoUrl) return match.videoUrl.replace(/\\\//g, '/');
   }
-  return out;
+  return mp4s[0].videoUrl!.replace(/\\\//g, '/');
 }
 
-async function fetchHtml(url: string): Promise<string> {
+async function resolveRedTubeMp4(rawId: string): Promise<{ url: string; referer: string } | null> {
+  const cleanNum = rawId.replace(/^rt_/, '');
+  const pageUrl = `https://www.redtube.com/${encodeURIComponent(cleanNum)}`;
+
   try {
-    const res = await fetch(url, { headers: EMBED_HEADERS, cache: 'no-store' });
-    if (!res.ok) return '';
-    return await res.text();
-  } catch {
-    return '';
-  }
-}
+    const res = await fetch(pageUrl, {
+      headers: { ...BROWSER_HEADERS, Referer: 'https://www.redtube.com/' },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
 
-async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
-  const now = Date.now();
-  const cached = resolvedUrlCache.get(videoId);
-  if (cached && cached.expiresAt > now) {
-    return cached.url;
-  }
-
-  const urlsToTry = [
-    `https://www.eporner.com/embed/${encodeURIComponent(videoId)}/`,
-    `https://m.eporner.com/embed/${encodeURIComponent(videoId)}/`,
-  ];
-
-  for (const targetUrl of urlsToTry) {
-    const html = await fetchHtml(targetUrl);
-    if (!html) continue;
-
-    // 1. Direct MP4 URL in HTML
-    const directMatch = html.match(/https?:\/\/[^"'\\\s<>]+\.mp4[^"'\\\s<>]*/i);
-    if (directMatch?.[0]) {
-      const cleanUrl = directMatch[0].replace(/&amp;/g, '&').replace(/\\\//g, '/');
-      resolvedUrlCache.set(videoId, { url: cleanUrl, expiresAt: now + 3600_000 });
-      return cleanUrl;
+    // Extract mediaDefinitions JSON array
+    const defsMatch = html.match(/mediaDefinitions\s*[:=]\s*(\[[\s\S]*?\])\s*[,;]/);
+    if (defsMatch?.[1]) {
+      try {
+        const parsed = JSON.parse(defsMatch[1]);
+        if (Array.isArray(parsed)) {
+          const picked = pickBestMp4FromDefinitions(parsed);
+          if (picked) {
+            return { url: picked, referer: 'https://www.redtube.com/' };
+          }
+        }
+      } catch {}
     }
 
-    // 2. Hash-based XHR MP4 lookup
-    const hashMatch =
-      html.match(/["']?hash["']?\s*[:=]\s*["']([a-f0-9]{32})["']/i) ||
-      html.match(/([a-f0-9]{32})/i);
+    // Fallback regex for escaped videoUrl
+    const urlMatches = html.match(/"videoUrl"\s*:\s*"(https?:[^"]+\.mp4[^"]*)"/gi);
+    if (urlMatches && urlMatches.length > 0) {
+      for (const m of urlMatches) {
+        const inner = m.match(/"(https?:[^"]+)"/i)?.[1];
+        if (inner) {
+          return {
+            url: inner.replace(/\\\//g, '/').replace(/\\u0026/g, '&'),
+            referer: 'https://www.redtube.com/',
+          };
+        }
+      }
+    }
+  } catch {}
 
-    if (hashMatch?.[1]) {
-      const encodedHash = convertBase36Hash(hashMatch[1]);
-      const xhrUrl = `https://www.eporner.com/xhr/video/${encodeURIComponent(
-        videoId
-      )}?hash=${encodeURIComponent(
-        encodedHash
-      )}&device=generic&domain=www.eporner.com&fallback=false&embed=true&supportedFormats=mp4`;
+  return null;
+}
 
+async function resolvePornhubMp4(rawId: string): Promise<{ url: string; referer: string } | null> {
+  const viewkey = rawId.replace(/^ph_/, '');
+  const pageUrl = `https://www.pornhub.com/view_video.php?viewkey=${encodeURIComponent(viewkey)}`;
+
+  try {
+    const res = await fetch(pageUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Referer: 'https://www.pornhub.com/',
+        Cookie: 'accessAgeDisclaimerPH=1; accessAgeDisclaimerUK=1',
+      },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const defsMatch = html.match(/"mediaDefinitions"\s*:\s*(\[[\s\S]*?\])\s*,/);
+    if (defsMatch?.[1]) {
       try {
-        const xhrRes = await fetch(xhrUrl, {
-          headers: {
-            ...EMBED_HEADERS,
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          cache: 'no-store',
-        });
-
-        if (xhrRes.ok) {
-          const json = await xhrRes.json();
-          const mp4Sources = json?.sources?.mp4;
-          if (mp4Sources && typeof mp4Sources === 'object') {
-            const order = ['480p', '360p', '720p', '240p', '1080p'];
-            for (const q of order) {
-              const src = mp4Sources[q]?.src;
-              if (typeof src === 'string' && src.startsWith('http')) {
-                resolvedUrlCache.set(videoId, { url: src, expiresAt: now + 3600_000 });
-                return src;
-              }
-            }
-            for (const entry of Object.values(mp4Sources) as Array<{ src?: string }>) {
-              if (entry?.src && entry.src.startsWith('http')) {
-                resolvedUrlCache.set(videoId, { url: entry.src, expiresAt: now + 3600_000 });
-                return entry.src;
+        const parsed = JSON.parse(defsMatch[1]);
+        if (Array.isArray(parsed)) {
+          // Check if videoUrl is a direct MP4 or a get_media JSON endpoint
+          const direct = pickBestMp4FromDefinitions(parsed);
+          if (direct && direct.includes('.mp4')) {
+            return { url: direct, referer: 'https://www.pornhub.com/' };
+          }
+          const mediaApiEntry = parsed.find(
+            (d: { format?: string; videoUrl?: string }) =>
+              d?.format === 'mp4' && typeof d?.videoUrl === 'string' && d.videoUrl.includes('get_media')
+          );
+          if (mediaApiEntry?.videoUrl) {
+            const apiRes = await fetch(mediaApiEntry.videoUrl.replace(/\\\//g, '/'), {
+              headers: {
+                ...BROWSER_HEADERS,
+                Referer: pageUrl,
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+              cache: 'no-store',
+            });
+            if (apiRes.ok) {
+              const mediaList = await apiRes.json();
+              if (Array.isArray(mediaList)) {
+                const resolved = pickBestMp4FromDefinitions(mediaList);
+                if (resolved) {
+                  return { url: resolved, referer: 'https://www.pornhub.com/' };
+                }
               }
             }
           }
         }
       } catch {}
     }
-  }
+  } catch {}
 
   return null;
+}
+
+async function resolveStream(id: string): Promise<{ url: string; referer: string } | null> {
+  const now = Date.now();
+  const cached = mp4Cache.get(id);
+  if (cached && cached.expiresAt > now) {
+    return { url: cached.url, referer: cached.referer };
+  }
+
+  let resolved: { url: string; referer: string } | null = null;
+  if (id.startsWith('ph_')) {
+    resolved = await resolvePornhubMp4(id);
+  } else {
+    resolved = await resolveRedTubeMp4(id);
+  }
+
+  if (resolved) {
+    mp4Cache.set(id, { ...resolved, expiresAt: now + 3600_000 });
+  }
+  return resolved;
 }
 
 export async function GET(
@@ -111,51 +158,51 @@ export async function GET(
   const { id } = await params;
   const cleanId = decodeURIComponent(id || '').trim();
   if (!cleanId) {
-    return new NextResponse('Missing video id', { status: 400 });
+    return new NextResponse('Missing id', { status: 400 });
   }
 
-  let mp4Url = await resolveEpornerMp4Url(cleanId);
-  if (!mp4Url) {
-    return new NextResponse('Stream unavailable', { status: 404 });
+  let target = await resolveStream(cleanId);
+  if (!target) {
+    return new NextResponse('Stream not found', { status: 404 });
   }
 
   const rangeHeader = req.headers.get('range');
   const upstreamHeaders: Record<string, string> = {
-    'User-Agent': EMBED_HEADERS['User-Agent'],
-    Referer: 'https://www.eporner.com/',
+    'User-Agent': BROWSER_HEADERS['User-Agent'],
+    Referer: target.referer,
   };
   if (rangeHeader) {
     upstreamHeaders['Range'] = rangeHeader;
   }
 
-  let videoRes = await fetch(mp4Url, { headers: upstreamHeaders, cache: 'no-store' });
+  let upstreamRes = await fetch(target.url, { headers: upstreamHeaders, cache: 'no-store' });
 
-  if (videoRes.status === 403 || videoRes.status === 410) {
-    resolvedUrlCache.delete(cleanId);
-    mp4Url = await resolveEpornerMp4Url(cleanId);
-    if (!mp4Url) {
+  if (upstreamRes.status === 403 || upstreamRes.status === 410) {
+    mp4Cache.delete(cleanId);
+    target = await resolveStream(cleanId);
+    if (!target) {
       return new NextResponse('Stream expired', { status: 404 });
     }
-    videoRes = await fetch(mp4Url, { headers: upstreamHeaders, cache: 'no-store' });
+    upstreamRes = await fetch(target.url, { headers: upstreamHeaders, cache: 'no-store' });
   }
 
-  if (!videoRes.ok && videoRes.status !== 206) {
-    return new NextResponse('Upstream error', { status: videoRes.status });
+  if (!upstreamRes.ok && upstreamRes.status !== 206) {
+    return new NextResponse('Upstream stream error', { status: upstreamRes.status });
   }
 
-  const responseHeaders = new Headers();
-  responseHeaders.set('Content-Type', videoRes.headers.get('content-type') || 'video/mp4');
-  responseHeaders.set('Accept-Ranges', 'bytes');
-  responseHeaders.set('Cache-Control', 'public, max-age=3600');
+  const headers = new Headers();
+  headers.set('Content-Type', upstreamRes.headers.get('content-type') || 'video/mp4');
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Cache-Control', 'public, max-age=3600');
 
-  const contentLength = videoRes.headers.get('content-length');
-  if (contentLength) responseHeaders.set('Content-Length', contentLength);
+  const len = upstreamRes.headers.get('content-length');
+  if (len) headers.set('Content-Length', len);
 
-  const contentRange = videoRes.headers.get('content-range');
-  if (contentRange) responseHeaders.set('Content-Range', contentRange);
+  const range = upstreamRes.headers.get('content-range');
+  if (range) headers.set('Content-Range', range);
 
-  return new NextResponse(videoRes.body, {
-    status: videoRes.status,
-    headers: responseHeaders,
+  return new NextResponse(upstreamRes.body, {
+    status: upstreamRes.status,
+    headers,
   });
 }

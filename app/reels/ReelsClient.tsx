@@ -27,29 +27,28 @@ interface ReelCategoryPill {
 
 const FOR_YOU_KEY = '__for_you_fresh__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
-const SEEN_REELS_KEY = 'hubtube_seen_reels_v1';
+const SEEN_REELS_KEY = 'hubtube_seen_reels_v2';
 const UNMUTED_PREF_KEY = 'hubtube_reels_unmuted_v1';
 
 const TOPIC_ROTATION_POOL = [
-  'mms', 'leaked mms', 'desi mms', 'desi bhabhi', 'viral', 'indian homemade',
-  'amateur', 'punjabi', 'hindi audio', 'desi couple', '4k', 'asian',
-  'milf', 'big tits', 'homemade', 'latina', 'teen', 'pov', 'indian aunty',
-  'japanese', 'big ass', 'hardcore', 'solo', 'massage',
+  'desi', 'indian', 'bhabhi', 'homemade', 'amateur', 'viral',
+  'punjabi', 'hindi', 'couple', 'asian', 'milf', 'big tits',
+  'latina', 'teen', 'pov', 'aunty', 'japanese', 'big ass',
+  'hardcore', 'solo', 'massage', 'public', 'lingerie',
 ];
 
 const INSTANT_DESI = [
-  'MMS', 'Leaked MMS', 'Desi MMS', 'Viral MMS', 'Desi', 'Desi Bhabhi',
-  'Desi Aunty', 'Indian Bhabhi', 'Indian Homemade', 'Punjabi Desi',
-  'Pakistani MMS', 'Hindi Audio', 'Desi Couple', 'Desi College Girl',
-  'South Indian Desi', 'Tamil Desi', 'Bengali Bhabhi', 'Mallu Aunty',
+  'Desi', 'Desi Bhabhi', 'Desi Aunty', 'Indian Bhabhi', 'Indian Homemade',
+  'Punjabi Desi', 'Pakistani', 'Hindi Audio', 'Desi Couple', 'Indian Girl',
+  'South Indian', 'Tamil', 'Bengali Bhabhi', 'Mallu Aunty',
 ];
 
 const INSTANT_CATEGORIES = [
-  'Amateur', 'Homemade', '4K', '1080p', '60 FPS', 'Asian', 'Japanese',
+  'Amateur', 'Homemade', '4K', '1080p', 'Asian', 'Japanese',
   'Korean', 'Latina', 'Ebony', 'Russian', 'Indian', 'Arab', 'Anal',
   'Big Tits', 'Big Ass', 'MILF', 'Teen', 'Petite', 'Blonde', 'Brunette',
   'POV', 'Creampie', 'Hardcore', 'Threesome', 'Lesbian', 'Public',
-  'Massage', 'Lingerie', 'Solo', 'VR Porn',
+  'Massage', 'Lingerie', 'Solo',
 ];
 
 const INSTANT_PORNSTARS = [
@@ -61,7 +60,7 @@ const INSTANT_PORNSTARS = [
 ];
 
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
-  desi: { text: 'MMS/DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
+  desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
   category: { text: 'CAT', cls: 'bg-blue-500/20 text-blue-300' },
   pornstar: { text: 'STAR', cls: 'bg-pink-500/20 text-pink-300' },
   video: { text: 'REEL', cls: 'bg-neutral-700 text-neutral-300' },
@@ -231,10 +230,6 @@ function formatDuration(lengthSec?: number | string, lengthMin?: number | string
   if (typeof lengthMin === 'string' && lengthMin.includes(':')) {
     return lengthMin.trim();
   }
-  const minsNum = Number(lengthMin);
-  if (!Number.isNaN(minsNum) && minsNum > 0) {
-    return `${Math.floor(minsNum)}:00`;
-  }
   return 'HD';
 }
 
@@ -243,39 +238,22 @@ function validThumb(v: ReelVideo): boolean {
   return Boolean(v?.id && v?.title && src.startsWith('http'));
 }
 
-async function fetchSingleOrder(
+async function fetchReelsFromDedicatedApi(
   query: string,
   pageNum: number,
-  perPage: number,
-  order: 'top-weekly' | 'latest' | 'most-popular'
+  order: 'mostviewed' | 'newest' | 'rating'
 ): Promise<ReelVideo[]> {
   try {
     const res = await fetch(
-      `/api/search?q=${encodeURIComponent(query)}&page=${pageNum}&per_page=${perPage}&order=${order}`,
+      `/api/reels-feed?q=${encodeURIComponent(query)}&page=${pageNum}&order=${order}`,
       { cache: 'no-store' }
     );
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return (data as ReelVideo[]).filter(validThumb);
-      }
-    }
-  } catch {}
-
-  try {
-    const direct = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
-        query
-      )}&per_page=${perPage}&page=${pageNum}&order=${order}&lq=0&thumbsize=big&format=json`,
-      { cache: 'no-store' }
-    );
-    if (direct.ok) {
-      const data = await direct.json();
-      return Array.isArray(data.videos) ? (data.videos as ReelVideo[]).filter(validThumb) : [];
-    }
-  } catch {}
-
-  return [];
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? (data as ReelVideo[]).filter(validThumb) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchFreshUniqueBatch(
@@ -284,10 +262,10 @@ async function fetchFreshUniqueBatch(
   isFirstPage: boolean = false
 ): Promise<ReelVideo[]> {
   const storedSeen = getSeenIds();
-  const orders: Array<'top-weekly' | 'latest' | 'most-popular'> = [
-    'top-weekly',
-    'latest',
-    'most-popular',
+  const orders: Array<'mostviewed' | 'newest' | 'rating'> = [
+    'mostviewed',
+    'newest',
+    'rating',
   ];
 
   let batches: ReelVideo[][] = [];
@@ -296,16 +274,16 @@ async function fetchFreshUniqueBatch(
     const randomTopics = shuffleArray(TOPIC_ROTATION_POOL).slice(0, 3);
     batches = await Promise.all(
       randomTopics.map((topic, idx) => {
-        const randPage = Math.floor(Math.random() * 14) + 1;
-        return fetchSingleOrder(topic, randPage, 14, orders[idx % orders.length]);
+        const randPage = Math.floor(Math.random() * 8) + 1;
+        return fetchReelsFromDedicatedApi(topic, randPage, orders[idx % orders.length]);
       })
     );
   } else {
-    const pageA = isFirstPage ? 1 : Math.floor(Math.random() * 5) + 1;
+    const pageA = isFirstPage ? 1 : Math.floor(Math.random() * 4) + 1;
     const pageB = pageA + 1;
     batches = await Promise.all([
-      fetchSingleOrder(categoryQuery, pageA, 15, 'most-popular'),
-      fetchSingleOrder(categoryQuery, pageB, 15, 'top-weekly'),
+      fetchReelsFromDedicatedApi(categoryQuery, pageA, 'mostviewed'),
+      fetchReelsFromDedicatedApi(categoryQuery, pageB, 'rating'),
     ]);
   }
 
@@ -356,12 +334,10 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Fallback cropped vertical frame only if a specific video stream fails
-  const [croppedFallbackIds, setCroppedFallbackIds] = useState<Record<string, boolean>>({});
-
   // Persistent Sound State: once unmuted, stays unmuted across every reel until muted manually
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isBuffering, setIsBuffering] = useState<boolean>(true);
   const [progress, setProgress] = useState<number>(0);
   const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
 
@@ -402,13 +378,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Play active native <video> automatically & pause all others
+  // Automatically play the active native <video> and pause all others
   useEffect(() => {
     const currentVideo = videos[activeIndex];
     setIsPaused(false);
     setProgress(0);
+    setIsBuffering(true);
 
     if (!currentVideo) return;
+
+    const spinnerFallback = setTimeout(() => {
+      setIsBuffering(false);
+    }, 3000);
 
     Object.entries(videoRefs.current).forEach(([vidId, el]) => {
       if (!el) return;
@@ -416,15 +397,25 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         el.muted = !isUnmuted;
         const playPromise = el.play();
         if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            el.muted = true;
-            el.play().catch(() => {});
-          });
+          playPromise
+            .then(() => {
+              setIsBuffering(false);
+            })
+            .catch(() => {
+              // If browser requires a tap before audio on initial page load, start muted immediately
+              // so playback begins right away, and unmute automatically on the next tap
+              el.muted = true;
+              el.play()
+                .then(() => setIsBuffering(false))
+                .catch(() => setIsBuffering(false));
+            });
         }
       } else {
         el.pause();
       }
     });
+
+    return () => clearTimeout(spinnerFallback);
   }, [activeIndex, videos]);
 
   useEffect(() => {
@@ -587,7 +578,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setTimeout(() => setToast(''), 1500);
   };
 
-  // Single tap toggles play/pause using our own clean center pause icon; double tap likes
+  // Single tap toggles play/pause using your own native player; double tap likes
   const handleReelSurfaceTap = (video: ReelVideo) => {
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current < 280;
@@ -726,7 +717,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   const handleShare = async (e: React.MouseEvent, video: ReelVideo) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/reels?start=${encodeURIComponent(video.id)}`;
+    const url = `${window.location.origin}/reels`;
     if (navigator.share) {
       try {
         await navigator.share({ title: video.title, url });
@@ -735,7 +726,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     try {
       await navigator.clipboard.writeText(url);
-      setToast('Reel link copied!');
+      setToast('Reels link copied!');
       setTimeout(() => setToast(''), 2000);
     } catch {}
   };
@@ -903,7 +894,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
-            const useCroppedFallback = Boolean(croppedFallbackIds[v.id]);
 
             return (
               <section
@@ -915,9 +905,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 onClick={() => handleReelSurfaceTap(v)}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden cursor-pointer"
               >
-                {/* Full-Bleed Vertical 9:16 Reels Frame (Fills 100% of screen height & width on mobile, full-height 9:16 on desktop) */}
+                {/* Full-Screen 9:16 Reels Container */}
                 <div className="relative h-[100dvh] w-full sm:w-[440px] bg-black overflow-hidden sm:border-x sm:border-white/10">
-                  {/* Full-Screen Vertical Poster */}
+                  {/* Full-Bleed Vertical Poster */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
@@ -925,8 +915,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Primary Own Native HTML5 <video> Player — Full-Screen 9:16, Zero Eporner Player UI */}
-                  {shouldMountVideo && !useCroppedFallback && (
+                  {/* 100% Native HTML5 <video> Player — Zero Third-Party Iframes or Mute Buttons */}
+                  {shouldMountVideo && (
                     <video
                       ref={(el) => {
                         videoRefs.current[v.id] = el;
@@ -938,6 +928,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       loop
                       preload={isActive ? 'auto' : 'metadata'}
                       muted={!isUnmuted}
+                      onLoadedData={() => {
+                        if (isActive) setIsBuffering(false);
+                      }}
+                      onCanPlay={() => {
+                        if (isActive) setIsBuffering(false);
+                      }}
+                      onPlaying={() => {
+                        if (isActive) setIsBuffering(false);
+                      }}
+                      onWaiting={() => {
+                        if (isActive) setIsBuffering(true);
+                      }}
                       onTimeUpdate={(e) => {
                         if (!isActive) return;
                         const el = e.currentTarget;
@@ -946,27 +948,20 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         }
                       }}
                       onError={() => {
-                        setCroppedFallbackIds((prev) => ({ ...prev, [v.id]: true }));
+                        if (isActive) setIsBuffering(false);
                       }}
                       className="absolute inset-0 w-full h-full object-cover z-10"
                     />
                   )}
 
-                  {/* Full-Bleed Vertical Cropped Fallback (Hides all Eporner bars, mute/unmute buttons, and borders completely) */}
-                  {isActive && useCroppedFallback && (
-                    <div className="absolute inset-0 z-10 overflow-hidden bg-black pointer-events-none">
-                      <iframe
-                        key={`clean-vertical-${v.id}-${isUnmuted ? 'u' : 'm'}`}
-                        src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1${
-                          isUnmuted ? '&muted=0' : '&muted=1'
-                        }`}
-                        className="w-full h-full scale-[1.95] origin-center border-0 pointer-events-none"
-                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                      />
+                  {/* Brief Spinner while MP4 starts streaming */}
+                  {isActive && isBuffering && !isPaused && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                      <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
 
-                  {/* Own Single Center Pause Icon (Only appears when user taps screen to pause) */}
+                  {/* Own Clean Center Pause Icon (Only appears when user taps screen to pause) */}
                   {isActive && isPaused && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="w-16 h-16 rounded-full bg-black/65 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
@@ -986,7 +981,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   )}
 
-                  {/* Top & Bottom Gradients */}
+                  {/* Gradients */}
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
                   <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-20" />
 
@@ -1070,19 +1065,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Share</span>
                     </button>
 
-                    {/* Full Watch Page */}
-                    <Link
-                      href={`/watch/${v.id}`}
-                      className="flex flex-col items-center gap-1 group"
-                    >
-                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">Full</span>
-                    </Link>
-
                     {/* Up / Down Navigation */}
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
                       <button
@@ -1127,23 +1109,21 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                   </div>
 
                   {/* Own Bottom Seek Scrub Bar */}
-                  {!useCroppedFallback && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
-                    >
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        value={isActive ? progress : 0}
-                        onChange={(e) => handleSeek(e, v.id)}
-                        aria-label="Seek reel"
-                        className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
-                      />
-                    </div>
-                  )}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
+                  >
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={isActive ? progress : 0}
+                      onChange={(e) => handleSeek(e, v.id)}
+                      aria-label="Seek reel"
+                      className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
+                    />
+                  </div>
                 </div>
               </section>
             );
