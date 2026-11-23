@@ -334,9 +334,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Persistent Sound State: once unmuted, stays unmuted across every reel until muted manually
+  // Persistent Sound State & Pause/Resume State
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
   const [isFullFill, setIsFullFill] = useState<boolean>(true);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
 
   // Search bar resets empty on refresh
   const [searchInput, setSearchInput] = useState<string>('');
@@ -350,6 +352,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const programmaticScrollLockRef = useRef<boolean>(false);
+  const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
     try {
@@ -372,6 +375,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Automatically reset pause state whenever swiping to a new reel
+  useEffect(() => {
+    setIsPaused(false);
+  }, [activeIndex]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -504,11 +512,34 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     e?.stopPropagation();
     const nextUnmuted = !isUnmuted;
     setIsUnmuted(nextUnmuted);
+    setIsPaused(false);
     try {
       localStorage.setItem(UNMUTED_PREF_KEY, String(nextUnmuted));
     } catch {}
     setToast(nextUnmuted ? '🔊 Sound On for all reels' : '🔇 Muted');
     setTimeout(() => setToast(''), 1500);
+  };
+
+  // Tap video area to pause or resume cleanly without ever hitting RedTube's outbound link overlay
+  const handleReelTap = (video: ReelVideo) => {
+    const now = Date.now();
+    const isDoubleTap = now - lastTapRef.current < 280;
+    lastTapRef.current = now;
+
+    if (isDoubleTap) {
+      setLikedIds((prev) => {
+        const next = { ...prev, [video.id]: true };
+        try {
+          localStorage.setItem(LIKES_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      setHeartBurstId(video.id);
+      setTimeout(() => setHeartBurstId(null), 700);
+      return;
+    }
+
+    setIsPaused((prev) => !prev);
   };
 
   const executeReelSearch = async (rawTerm: string) => {
@@ -524,6 +555,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setActiveCategory(lower);
     setLoading(true);
     setActiveIndex(0);
+    setIsPaused(false);
 
     const batch = await fetchFreshUniqueBatch(lower, new Set(), true);
     setVideos(batch);
@@ -576,6 +608,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     setLoading(true);
     setActiveIndex(0);
+    setIsPaused(false);
 
     const batch = await fetchFreshUniqueBatch(query, new Set(), true);
     setVideos(batch);
@@ -779,7 +812,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
 
-            // RedTube Official Embed Player (No Eporner player, zero server proxy blocks)
             const redtubeEmbedUrl = `https://embed.redtube.com/?id=${encodeURIComponent(
               v.id
             )}&bgcolor=000000&autoplay=1&muted=${isUnmuted ? '0' : '1'}`;
@@ -803,19 +835,53 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Active RedTube Stream Player */}
-                  {isActive && (
+                  {/* Active Sandboxed Stream Player (Blocks ALL redirects/popups to RedTube) */}
+                  {isActive && !isPaused && (
                     <div className="absolute inset-0 z-10 overflow-hidden bg-black">
                       <iframe
                         key={`rt-reel-${v.id}-${isUnmuted ? 'sound' : 'muted'}`}
                         src={redtubeEmbedUrl}
                         title={v.title}
+                        sandbox="allow-scripts allow-same-origin allow-presentation"
                         className={`w-full h-full border-0 transition-transform duration-200 ${
                           isFullFill ? 'scale-[1.78] origin-center' : 'scale-100'
                         }`}
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                        allowFullScreen
                       />
+                    </div>
+                  )}
+
+                  {/* Transparent Tap Shield for Clean Pause & Resume (Prevents clicking RedTube's outbound overlay) */}
+                  {isActive && (
+                    <div
+                      onClick={() => handleReelTap(v)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={isPaused ? 'Resume reel' : 'Pause reel'}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ' || e.key === 'Enter') {
+                          e.preventDefault();
+                          setIsPaused((prev) => !prev);
+                        }
+                      }}
+                      className="absolute inset-x-0 top-28 bottom-16 z-20 cursor-pointer flex items-center justify-center"
+                    >
+                      {isPaused && (
+                        <div className="w-16 h-16 rounded-full bg-black/70 border border-white/25 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Double-Tap Heart Burst */}
+                  {heartBurstId === v.id && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-ping">
+                      <svg viewBox="0 0 24 24" fill="#ef4444" className="w-24 h-24 drop-shadow-2xl">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                      </svg>
                     </div>
                   )}
 
@@ -825,6 +891,39 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
                   {/* Right-Side Reels Action Rail */}
                   <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">
+                    {/* Pause / Play Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsPaused((prev) => !prev);
+                      }}
+                      aria-label={isPaused ? 'Resume reel' : 'Pause reel'}
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                          isPaused
+                            ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-lg'
+                            : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
+                        }`}
+                      >
+                        {isPaused ? (
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                            <rect x="6" y="5" width="4" height="14" rx="1" />
+                            <rect x="14" y="5" width="4" height="14" rx="1" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {isPaused ? 'Play' : 'Pause'}
+                      </span>
+                    </button>
+
                     {/* Persistent Global Unmute / Mute Toggle */}
                     <button
                       type="button"
