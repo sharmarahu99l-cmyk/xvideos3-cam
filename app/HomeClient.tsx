@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from './VideoCard';
 import JuicyBanner from './JuicyBanner';
@@ -72,6 +72,20 @@ const INSTANT_PORNSTARS = [
   "Bridgette B", "Damion Dayski", "Jada Stevens", "Julia Ann", "Phoenix Marie",
   "Anissa Kate", "Johnny Sins", "Chanel Preston", "Alura Jenson", "Reagan Foxx",
   "Eliza Ibarra", "Ariella Ferrera", "Mick Blue",
+];
+
+const SIDEBAR_VIDEO_LINKS = [
+  { icon: '📽️', label: '1080 HD PORN 1080P', slug: '1080p' },
+  { icon: '🎬', label: '60FPS PORN', slug: '60-fps' },
+  { icon: '4️⃣K', label: '4K PORN', slug: '4k' },
+  { icon: '🔥', label: 'HD SEX', slug: 'hd-sex' },
+  { icon: '⭐', label: 'TOP RATED', slug: 'top-rated' },
+  { icon: '📹', label: 'AMATEUR', slug: 'amateur' },
+  { icon: '👩', label: 'SOLO GIRLS', slug: 'solo' },
+  { icon: '📡', label: 'ON-AIR', slug: 'live' },
+  { icon: '🕶️', label: 'VR PORN', slug: 'vr-porn' },
+  { icon: '📋', label: 'PLAYLISTS', slug: 'playlist' },
+  { icon: '🎥', label: 'FREE PORN', slug: 'free-porn' },
 ];
 
 function scrollTopNow() {
@@ -178,6 +192,8 @@ export default function HomeClient({
 }: HomeClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname() || '/';
+  const isCategoryRoute = pathname.startsWith('/category/');
 
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
@@ -205,7 +221,6 @@ export default function HomeClient({
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  // Always load MMS Videos for the Homepage Reels strip
   useEffect(() => {
     let active = true;
     const loadMmsReels = async () => {
@@ -248,10 +263,12 @@ export default function HomeClient({
 
       if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
-        document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
-      } else if (urlPage > 1) {
+        if (!isCategoryRoute) {
+          document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
+        }
+      } else if (urlPage > 1 && !isCategoryRoute) {
         document.title = `Desi Videos & HD Porn - Page ${urlPage} | HubTube - XVideos3`;
-      } else {
+      } else if (!isCategoryRoute) {
         document.title = 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3';
       }
 
@@ -320,7 +337,7 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, [urlQuery, urlPage, initialQuery, initialPage]);
+  }, [urlQuery, urlPage, initialQuery, initialPage, isCategoryRoute]);
 
   const handleSimilarTopicClick = async (topic: string) => {
     setActiveSimTopic(topic);
@@ -393,11 +410,26 @@ export default function HomeClient({
     setShowMenu(false);
     scrollTopNow();
     const safePage = Math.min(MAX_PAGES, Math.max(1, targetPage));
+    const trimmed = term.trim();
+
+    if (!trimmed) {
+      router.push(safePage > 1 ? `/?page=${safePage}` : '/', { scroll: true });
+      return;
+    }
+
+    const slug = toCategorySlug(trimmed);
+    if (slug && trimmed.split(/\s+/).length <= 4) {
+      router.push(
+        safePage > 1 ? `/category/${slug}?page=${safePage}` : `/category/${slug}`,
+        { scroll: true }
+      );
+      return;
+    }
+
     const params = new URLSearchParams();
-    if (term.trim()) params.set('q', term.trim());
+    params.set('q', trimmed);
     if (safePage > 1) params.set('page', String(safePage));
-    const qs = params.toString();
-    router.push(qs ? `/?${qs}` : '/', { scroll: true });
+    router.push(`/?${params.toString()}`, { scroll: true });
   };
 
   const handleSearch = (e?: React.FormEvent) => {
@@ -434,13 +466,20 @@ export default function HomeClient({
     }
   };
 
-  const handleSidebarClick = (term: string) => {
-    setSearchQuery(term);
-    navigateToSearch(term, 1);
+  const handlePageClick = (pageNum: number) => {
+    const safePage = Math.min(MAX_PAGES, Math.max(1, pageNum));
+    scrollTopNow();
+    if (isCategoryRoute) {
+      router.push(safePage > 1 ? `${pathname}?page=${safePage}` : pathname, { scroll: true });
+    } else {
+      navigateToSearch(urlQuery, safePage);
+    }
   };
 
-  const handlePageClick = (pageNum: number) => {
-    navigateToSearch(urlQuery, pageNum);
+  const closeSidebar = () => {
+    setShowMenu(false);
+    setShowVideoSub(false);
+    scrollTopNow();
   };
 
   const pageWindow = getPageWindow(page, MAX_PAGES);
@@ -626,10 +665,7 @@ export default function HomeClient({
         <div className="fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] shadow-2xl z-[9999] pt-16 overflow-y-auto border-r border-gray-800">
           <div className="flex justify-end px-6 pt-4 pb-2 border-b border-gray-700">
             <button
-              onClick={() => {
-                setShowMenu(false);
-                setShowVideoSub(false);
-              }}
+              onClick={closeSidebar}
               className="text-4xl leading-none text-gray-400 hover:text-white"
             >
               ✕
@@ -643,30 +679,31 @@ export default function HomeClient({
           </button>
 
           {showVideoSub && (
-            <div className="mt-2 px-6 space-y-3">
-              <button onClick={() => handleSidebarClick("1080p")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📽️</span><span className="text-white">1080 HD PORN 1080P</span></button>
-              <button onClick={() => handleSidebarClick("60fps")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎬</span><span className="text-white">60FPS PORN</span></button>
-              <button onClick={() => handleSidebarClick("4k")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">4️⃣K</span><span className="text-white">4K PORN</span></button>
-              <button onClick={() => handleSidebarClick("hd sex")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🔥</span><span className="text-white">HD SEX</span></button>
-              <button onClick={() => handleSidebarClick("top rated")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">⭐</span><span className="text-white">TOP RATED</span></button>
-              <button onClick={() => handleSidebarClick("amateur")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📹</span><span className="text-white">AMATEUR</span></button>
-              <button onClick={() => handleSidebarClick("solo")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">👩</span><span className="text-white">SOLO GIRLS</span></button>
-              <button onClick={() => handleSidebarClick("live")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📡</span><span className="text-white">ON-AIR</span></button>
-              <button onClick={() => handleSidebarClick("vr")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🕶️</span><span className="text-white">VR PORN</span></button>
-              <button onClick={() => handleSidebarClick("playlist")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">📋</span><span className="text-white">PLAYLISTS</span></button>
-              <button onClick={() => handleSidebarClick("free porn")} className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black"><span className="text-xl">🎥</span><span className="text-white">FREE PORN</span></button>
+            <div className="mt-2 px-6 space-y-3 pb-3">
+              {SIDEBAR_VIDEO_LINKS.map((item) => (
+                <Link
+                  key={item.slug}
+                  href={`/category/${item.slug}`}
+                  onClick={closeSidebar}
+                  className="flex items-center gap-3 bg-[#222] rounded-xl p-3 w-full text-left hover:bg-[#FF9900] hover:text-black text-white transition"
+                >
+                  <span className="text-xl">{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              ))}
             </div>
           )}
-          <button onClick={() => handleSidebarClick("desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">🔥 DESI VIDEOS</button>
-          <Link href="/reels" onClick={() => setShowMenu(false)} className="px-6 py-4 text-[#FF9900] text-lg font-black flex items-center gap-3 border-b border-gray-700">🎬 REELS (SWIPE)</Link>
-          <button onClick={() => handleSidebarClick("viral desi")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">⚡ VIRAL DESI MMS</button>
-          <button onClick={() => handleSidebarClick("4k")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">4K PORN</button>
-          <button onClick={() => handleSidebarClick("best videos")} className="w-full px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700 text-left">BEST VIDEOS</button>
-          <Link href="/categories" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
-          <Link href="/pornstars" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
-          <Link href="/history" onClick={() => setShowMenu(false)} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">🕒 WATCH HISTORY</Link>
-          <Link href="/login" onClick={() => setShowMenu(false)} className="px-6 py-4 text-white text-lg font-medium flex items-center gap-3 border-b border-gray-700 hover:text-[#FF9900]">🔑 SIGN IN</Link>
-          <Link href="/signup" onClick={() => setShowMenu(false)} className="px-6 py-4 text-[#FF9900] text-lg font-bold flex items-center gap-3 border-b border-gray-700">✨ SIGN UP</Link>
+
+          <Link href="/category/desi" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">🔥 DESI VIDEOS</Link>
+          <Link href="/reels" onClick={closeSidebar} className="px-6 py-4 text-[#FF9900] text-lg font-black flex items-center gap-3 border-b border-gray-700">🎬 REELS (SWIPE)</Link>
+          <Link href="/category/viral-desi-mms" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">⚡ VIRAL DESI MMS</Link>
+          <Link href="/category/4k" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">4K PORN</Link>
+          <Link href="/category/best-videos" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">BEST VIDEOS</Link>
+          <Link href="/categories" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ CATEGORIES</Link>
+          <Link href="/pornstars" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">▶ PORNSTARS</Link>
+          <Link href="/history" onClick={closeSidebar} className="px-6 py-4 text-yellow-400 text-lg font-medium flex items-center gap-3 border-b border-gray-700">🕒 WATCH HISTORY</Link>
+          <Link href="/login" onClick={closeSidebar} className="px-6 py-4 text-white text-lg font-medium flex items-center gap-3 border-b border-gray-700 hover:text-[#FF9900]">🔑 SIGN IN</Link>
+          <Link href="/signup" onClick={closeSidebar} className="px-6 py-4 text-[#FF9900] text-lg font-bold flex items-center gap-3 border-b border-gray-700">✨ SIGN UP</Link>
         </div>
       )}
 
@@ -675,13 +712,14 @@ export default function HomeClient({
           <h1 className="text-2xl md:text-3xl font-black text-[#FF9900] capitalize">
             {urlQuery ? `${urlQuery} Videos` : 'Trending Desi Videos, Viral MMS & HD Porn'}
           </h1>
-          {urlQuery && (
-            <button
-              onClick={() => navigateToSearch('', 1)}
+          {(urlQuery || isCategoryRoute) && (
+            <Link
+              href="/"
+              onClick={scrollTopNow}
               className="text-sm bg-[#222] hover:bg-[#FF9900] hover:text-black px-4 py-2 rounded-full font-semibold transition"
             >
               Reset Filter
-            </button>
+            </Link>
           )}
         </div>
 
