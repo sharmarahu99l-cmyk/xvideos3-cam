@@ -27,7 +27,7 @@ interface ReelCategoryPill {
 
 const FOR_YOU_KEY = '__for_you_fresh__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
-const SEEN_REELS_KEY = 'hubtube_seen_reels_v2';
+const SEEN_REELS_KEY = 'hubtube_seen_reels_v3';
 const UNMUTED_PREF_KEY = 'hubtube_reels_unmuted_v1';
 
 const TOPIC_ROTATION_POOL = [
@@ -336,10 +336,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   // Persistent Sound State: once unmuted, stays unmuted across every reel until muted manually
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [isBuffering, setIsBuffering] = useState<boolean>(true);
-  const [progress, setProgress] = useState<number>(0);
-  const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
+  const [isFullFill, setIsFullFill] = useState<boolean>(true);
 
   // Search bar resets empty on refresh
   const [searchInput, setSearchInput] = useState<string>('');
@@ -349,12 +346,10 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   const feedRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLElement | null>>([]);
-  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const loadingMoreRef = useRef<boolean>(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const programmaticScrollLockRef = useRef<boolean>(false);
-  const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
     try {
@@ -377,55 +372,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Automatically play the active native <video> and pause all others
-  useEffect(() => {
-    const currentVideo = videos[activeIndex];
-    setIsPaused(false);
-    setProgress(0);
-    setIsBuffering(true);
-
-    if (!currentVideo) return;
-
-    const spinnerFallback = setTimeout(() => {
-      setIsBuffering(false);
-    }, 3000);
-
-    Object.entries(videoRefs.current).forEach(([vidId, el]) => {
-      if (!el) return;
-      if (vidId === currentVideo.id) {
-        el.muted = !isUnmuted;
-        const playPromise = el.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              setIsBuffering(false);
-            })
-            .catch(() => {
-              // If browser requires a tap before audio on initial page load, start muted immediately
-              // so playback begins right away, and unmute automatically on the next tap
-              el.muted = true;
-              el.play()
-                .then(() => setIsBuffering(false))
-                .catch(() => setIsBuffering(false));
-            });
-        }
-      } else {
-        el.pause();
-      }
-    });
-
-    return () => clearTimeout(spinnerFallback);
-  }, [activeIndex, videos]);
-
-  useEffect(() => {
-    const currentVideo = videos[activeIndex];
-    if (!currentVideo) return;
-    const el = videoRefs.current[currentVideo.id];
-    if (el) {
-      el.muted = !isUnmuted;
-    }
-  }, [isUnmuted, activeIndex, videos]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -561,69 +507,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     try {
       localStorage.setItem(UNMUTED_PREF_KEY, String(nextUnmuted));
     } catch {}
-
-    const currentVideo = videos[activeIndex];
-    if (currentVideo) {
-      const el = videoRefs.current[currentVideo.id];
-      if (el) {
-        el.muted = !nextUnmuted;
-        if (el.paused) {
-          el.play().catch(() => {});
-          setIsPaused(false);
-        }
-      }
-    }
-
     setToast(nextUnmuted ? '🔊 Sound On for all reels' : '🔇 Muted');
     setTimeout(() => setToast(''), 1500);
-  };
-
-  // Single tap toggles play/pause using your own native player; double tap likes
-  const handleReelSurfaceTap = (video: ReelVideo) => {
-    const now = Date.now();
-    const isDoubleTap = now - lastTapRef.current < 280;
-    lastTapRef.current = now;
-
-    if (isDoubleTap) {
-      setLikedIds((prev) => {
-        const next = { ...prev, [video.id]: true };
-        try {
-          localStorage.setItem(LIKES_KEY, JSON.stringify(next));
-        } catch {}
-        return next;
-      });
-      setHeartBurstId(video.id);
-      setTimeout(() => setHeartBurstId(null), 700);
-      return;
-    }
-
-    const el = videoRefs.current[video.id];
-    if (!el) return;
-
-    if (isUnmuted && el.muted) {
-      el.muted = false;
-      el.play().catch(() => {});
-      setIsPaused(false);
-      return;
-    }
-
-    if (el.paused) {
-      el.play().catch(() => {});
-      setIsPaused(false);
-    } else {
-      el.pause();
-      setIsPaused(true);
-    }
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>, videoId: string) => {
-    e.stopPropagation();
-    const val = Number(e.target.value);
-    setProgress(val);
-    const el = videoRefs.current[videoId];
-    if (el && el.duration && !Number.isNaN(el.duration)) {
-      el.currentTime = (val / 100) * el.duration;
-    }
   };
 
   const executeReelSearch = async (rawTerm: string) => {
@@ -891,9 +776,13 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
         >
           {videos.map((v, idx) => {
             const isActive = idx === activeIndex;
-            const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
+
+            // RedTube Official Embed Player (No Eporner player, zero server proxy blocks)
+            const redtubeEmbedUrl = `https://embed.redtube.com/?id=${encodeURIComponent(
+              v.id
+            )}&bgcolor=000000&autoplay=1&muted=${isUnmuted ? '0' : '1'}`;
 
             return (
               <section
@@ -902,12 +791,11 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 ref={(el) => {
                   itemRefs.current[idx] = el;
                 }}
-                onClick={() => handleReelSurfaceTap(v)}
-                className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden cursor-pointer"
+                className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
               >
                 {/* Full-Screen 9:16 Reels Container */}
                 <div className="relative h-[100dvh] w-full sm:w-[440px] bg-black overflow-hidden sm:border-x sm:border-white/10">
-                  {/* Full-Bleed Vertical Poster */}
+                  {/* Full-Bleed Poster */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
@@ -915,82 +803,29 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* 100% Native HTML5 <video> Player — Zero Third-Party Iframes or Mute Buttons */}
-                  {shouldMountVideo && (
-                    <video
-                      ref={(el) => {
-                        videoRefs.current[v.id] = el;
-                      }}
-                      src={`/api/reel-stream/${encodeURIComponent(v.id)}`}
-                      poster={v.default_thumb.src}
-                      playsInline
-                      autoPlay={isActive}
-                      loop
-                      preload={isActive ? 'auto' : 'metadata'}
-                      muted={!isUnmuted}
-                      onLoadedData={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      onCanPlay={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      onPlaying={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      onWaiting={() => {
-                        if (isActive) setIsBuffering(true);
-                      }}
-                      onTimeUpdate={(e) => {
-                        if (!isActive) return;
-                        const el = e.currentTarget;
-                        if (el.duration && !Number.isNaN(el.duration)) {
-                          setProgress((el.currentTime / el.duration) * 100);
-                        }
-                      }}
-                      onError={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      className="absolute inset-0 w-full h-full object-cover z-10"
-                    />
-                  )}
-
-                  {/* Brief Spinner while MP4 starts streaming */}
-                  {isActive && isBuffering && !isPaused && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                      <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
+                  {/* Active RedTube Stream Player */}
+                  {isActive && (
+                    <div className="absolute inset-0 z-10 overflow-hidden bg-black">
+                      <iframe
+                        key={`rt-reel-${v.id}-${isUnmuted ? 'sound' : 'muted'}`}
+                        src={redtubeEmbedUrl}
+                        title={v.title}
+                        className={`w-full h-full border-0 transition-transform duration-200 ${
+                          isFullFill ? 'scale-[1.78] origin-center' : 'scale-100'
+                        }`}
+                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                        allowFullScreen
+                      />
                     </div>
                   )}
 
-                  {/* Own Clean Center Pause Icon (Only appears when user taps screen to pause) */}
-                  {isActive && isPaused && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                      <div className="w-16 h-16 rounded-full bg-black/65 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Double-Tap Heart Animation */}
-                  {heartBurstId === v.id && (
-                    <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-ping">
-                      <svg viewBox="0 0 24 24" fill="#ef4444" className="w-24 h-24 drop-shadow-2xl">
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                      </svg>
-                    </div>
-                  )}
-
-                  {/* Gradients */}
-                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
+                  {/* Top & Bottom Gradients */}
+                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
                   <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-20" />
 
-                  {/* Own Right-Side Reels Action Rail */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4"
-                  >
-                    {/* Own Persistent Unmute / Mute Toggle */}
+                  {/* Right-Side Reels Action Rail */}
+                  <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">
+                    {/* Persistent Global Unmute / Mute Toggle */}
                     <button
                       type="button"
                       onClick={(e) => toggleGlobalSound(e)}
@@ -1020,6 +855,23 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </div>
                       <span className="text-[10px] font-bold drop-shadow">
                         {isUnmuted ? 'Sound On' : 'Unmute'}
+                      </span>
+                    </button>
+
+                    {/* Full-Screen 9:16 vs Wide Fit Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setIsFullFill((prev) => !prev)}
+                      aria-label="Toggle screen fit"
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {isFullFill ? 'Full 9:16' : 'Wide'}
                       </span>
                     </button>
 
@@ -1106,23 +958,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     <h2 className="text-white text-sm font-bold line-clamp-2 drop-shadow-md leading-snug">
                       {v.title}
                     </h2>
-                  </div>
-
-                  {/* Own Bottom Seek Scrub Bar */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
-                  >
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={isActive ? progress : 0}
-                      onChange={(e) => handleSeek(e, v.id)}
-                      aria-label="Seek reel"
-                      className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
-                    />
                   </div>
                 </div>
               </section>

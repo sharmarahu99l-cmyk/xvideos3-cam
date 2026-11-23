@@ -55,7 +55,7 @@ async function fetchInitialRedTube(query: string, page: number): Promise<ReelVid
         : '';
 
       out.push({
-        id: `rt_${vidId}`,
+        id: vidId,
         title,
         default_thumb: { src: thumb },
         length_min: v?.duration || '0:30',
