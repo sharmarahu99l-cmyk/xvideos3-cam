@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import Script from 'next/script';
 import AgeGate from './AgeGate';
+import PopAdsScript from './PopAdsScript';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -29,14 +29,8 @@ export default function RootLayout({
       </head>
       <body className="bg-[#0a0a0a] text-[#ddd]">
         <AgeGate />
+        <PopAdsScript />
         {children}
-
-        {/* JuicyAds PopUnders v3 */}
-        <Script
-          id="juicyads-popunder-v3"
-          src="https://js.juicyads.com/jp.php?c=4474z2y2s224u4r2p2e4438444&u=https%3A%2F%2Fwww.juicyads.rocks"
-          strategy="afterInteractive"
-        />
       </body>
     </html>
   );
