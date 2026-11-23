@@ -25,17 +25,25 @@ async function getCategoryVideos(slug: string, page: number): Promise<StoredVide
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ page?: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  const sp = await searchParams;
+  const page = Math.max(1, Number(sp?.page) || 1);
   const query = fromCategorySlug(slug);
-  const seo = buildCategorySeoCopy(query);
+  const seo = buildCategorySeoCopy(query, page);
+  const canonicalPath =
+    page > 1
+      ? `/category/${encodeURIComponent(slug)}?page=${page}`
+      : `/category/${encodeURIComponent(slug)}`;
 
   return {
     title: seo.metaTitle,
     description: seo.metaDescription,
-    alternates: { canonical: `/category/${encodeURIComponent(slug)}` },
+    alternates: { canonical: canonicalPath },
   };
 }
 
@@ -51,21 +59,23 @@ export default async function CategorySlugPage({
   const page = Math.max(1, Number(sp?.page) || 1);
   const query = fromCategorySlug(slug);
   const initialVideos = await getCategoryVideos(slug, page);
-  const seo = buildCategorySeoCopy(query);
+  const seo = buildCategorySeoCopy(query, page);
 
   return (
     <>
       <HomeClient initialVideos={initialVideos} initialQuery={query} initialPage={page} />
-      <section className="max-w-7xl mx-auto px-4 pb-10">
-        <div className="bg-[#111] border border-gray-800 rounded-2xl p-6 space-y-3 text-xs sm:text-sm text-gray-400 leading-relaxed">
-          <h2 className="text-base sm:text-lg font-black text-[#FF9900]">
-            About {seo.displayTitle} on HubTube (XVideos3.cam)
-          </h2>
-          {seo.articleParagraphs.map((para, i) => (
-            <p key={i}>{para}</p>
-          ))}
-        </div>
-      </section>
+      {page === 1 && (
+        <section className="max-w-7xl mx-auto px-4 pb-10">
+          <div className="bg-[#111] border border-gray-800 rounded-2xl p-6 space-y-3 text-xs sm:text-sm text-gray-400 leading-relaxed">
+            <h2 className="text-base sm:text-lg font-black text-[#FF9900]">
+              About {seo.displayTitle} on HubTube (XVideos3.cam)
+            </h2>
+            {seo.articleParagraphs.map((para, i) => (
+              <p key={i}>{para}</p>
+            ))}
+          </div>
+        </section>
+      )}
     </>
   );
 }

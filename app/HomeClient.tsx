@@ -8,10 +8,7 @@ import JuicyBanner from './JuicyBanner';
 import {
   StoredVideo,
   trackUserInterest,
-  getTopPreferences,
   getWatchHistory,
-  extractSmartTopics,
-  rankAndBlendSimilarVideos,
   normalizeTitleKey,
 } from './lib/userPrefs';
 import { SEO_DESI_HUB_LINKS, toCategorySlug } from './lib/seoData';
@@ -198,16 +195,15 @@ export default function HomeClient({
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
 
+  // Show the full MMS Reels shelf ONLY on the main homepage (Page 1, no search/category filter)
+  const isMainHomepage = !isCategoryRoute && !urlQuery.trim() && urlPage === 1;
+
   const validInitial = initialVideos.filter(validThumb);
   const hasSSRMatch =
     validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
   const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? validInitial : []);
   const [trendingReels, setTrendingReels] = useState<Video[]>([]);
-  const [similarVideos, setSimilarVideos] = useState<Video[]>([]);
-  const [similarTopics, setSimilarTopics] = useState<string[]>([]);
-  const [activeSimTopic, setActiveSimTopic] = useState<string>('ALL');
-  const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
   const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
@@ -221,8 +217,11 @@ export default function HomeClient({
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
+  // Load MMS Reels ONLY when on the main homepage
   useEffect(() => {
+    if (!isMainHomepage) return;
     let active = true;
+
     const loadMmsReels = async () => {
       const [weekly, latest, popular] = await Promise.all([
         fetchVideos('mms', 1, 10, 'top-weekly'),
@@ -249,7 +248,7 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, []);
+  }, [isMainHomepage]);
 
   useEffect(() => {
     let active = true;
@@ -258,8 +257,6 @@ export default function HomeClient({
       scrollTopNow();
       setSearchQuery(urlQuery);
       setPage(urlPage);
-      setSimilarVideos([]);
-      setActiveSimTopic('ALL');
 
       if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
@@ -267,23 +264,13 @@ export default function HomeClient({
           document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
         }
       } else if (urlPage > 1 && !isCategoryRoute) {
-        document.title = `Desi Videos & HD Porn - Page ${urlPage} | HubTube - XVideos3`;
+        document.title = `Trending Desi Videos, Viral MMS & HD Porn - Page ${urlPage} | HubTube XVideos3`;
       } else if (!isCategoryRoute) {
-        document.title = 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3';
+        document.title = 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube XVideos3';
       }
 
       const history = getWatchHistory(5).filter(validThumb);
       setRecentHistory(history);
-
-      const prefs = getTopPreferences(4);
-      const seedText =
-        urlQuery.trim() ||
-        history[0]?.title ||
-        prefs.slice(0, 3).join(' ') ||
-        'desi bhabhi indian homemade';
-
-      const ctx = extractSmartTopics(seedText, history[0]?.keywords || '');
-      setSimilarTopics(ctx.topics);
 
       const usingSSRMain =
         validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
@@ -292,19 +279,9 @@ export default function HomeClient({
         setLoading(true);
       }
 
-      const simQuerySet = new Set<string>();
-      if (ctx.topics.length >= 2) simQuerySet.add(ctx.comboQuery);
-      for (const t of ctx.topics.slice(0, 3)) simQuerySet.add(t);
-      const simQueries = Array.from(simQuerySet);
-
-      const [fetchedMain, ...simBatches] = await Promise.all([
-        usingSSRMain
-          ? Promise.resolve(validInitial)
-          : fetchVideos(urlQuery, urlPage, PER_PAGE, 'most-popular'),
-        ...simQueries.map((q, idx) =>
-          fetchVideos(q, urlPage + 2, 16, idx === 0 ? 'top-rated' : 'most-popular')
-        ),
-      ]);
+      const fetchedMain = usingSSRMain
+        ? validInitial
+        : await fetchVideos(urlQuery, urlPage, PER_PAGE, 'most-popular');
 
       if (!active) return;
 
@@ -320,16 +297,7 @@ export default function HomeClient({
         }
       }
 
-      const blendedSimilar = rankAndBlendSimilarVideos(
-        simBatches,
-        ctx.topics,
-        seenIds,
-        seenTitles,
-        15
-      );
-
       setVideos(uniqueMain);
-      setSimilarVideos(blendedSimilar);
       setLoading(false);
     };
 
@@ -338,30 +306,6 @@ export default function HomeClient({
       active = false;
     };
   }, [urlQuery, urlPage, initialQuery, initialPage, isCategoryRoute]);
-
-  const handleSimilarTopicClick = async (topic: string) => {
-    setActiveSimTopic(topic);
-    setLoadingSimilar(true);
-
-    const excludeIds = new Set<string>(videos.map((v) => v.id));
-    const excludeTitles = new Set<string>(videos.map((v) => normalizeTitleKey(v.title)));
-
-    const queries = topic === 'ALL' ? similarTopics.slice(0, 3) : [topic];
-    const batches = await Promise.all(
-      queries.map((q) => fetchVideos(q, page + 2, topic === 'ALL' ? 16 : 24, 'top-rated'))
-    );
-
-    const blended = rankAndBlendSimilarVideos(
-      batches,
-      topic === 'ALL' ? similarTopics : [topic],
-      excludeIds,
-      excludeTitles,
-      15
-    );
-
-    setSimilarVideos(blended);
-    setLoadingSimilar(false);
-  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -466,14 +410,20 @@ export default function HomeClient({
     }
   };
 
-  const handlePageClick = (pageNum: number) => {
+  // Builds real crawlable <a href="..."> URLs for Googlebot, Bingbot & Yandex
+  const getPageHref = (pageNum: number): string => {
     const safePage = Math.min(MAX_PAGES, Math.max(1, pageNum));
-    scrollTopNow();
     if (isCategoryRoute) {
-      router.push(safePage > 1 ? `${pathname}?page=${safePage}` : pathname, { scroll: true });
-    } else {
-      navigateToSearch(urlQuery, safePage);
+      return safePage > 1 ? `${pathname}?page=${safePage}` : pathname;
     }
+    const trimmed = urlQuery.trim();
+    if (!trimmed) {
+      return safePage > 1 ? `/?page=${safePage}` : '/';
+    }
+    const params = new URLSearchParams();
+    params.set('q', trimmed);
+    if (safePage > 1) params.set('page', String(safePage));
+    return `/?${params.toString()}`;
   };
 
   const closeSidebar = () => {
@@ -490,33 +440,39 @@ export default function HomeClient({
       aria-label="Pagination"
       className="flex justify-center items-center gap-2 flex-wrap my-6"
     >
-      <button
-        type="button"
-        onClick={() => handlePageClick(Math.max(1, page - 1))}
-        disabled={page <= 1}
-        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm md:text-base"
-      >
-        ← Back
-      </button>
+      {page > 1 ? (
+        <Link
+          href={getPageHref(page - 1)}
+          onClick={scrollTopNow}
+          className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
+        >
+          ← Back
+        </Link>
+      ) : (
+        <span className="px-4 py-2.5 bg-[#222] text-white rounded-full font-bold opacity-40 text-sm md:text-base">
+          ← Back
+        </span>
+      )}
 
       {pageWindow[0] > 1 && (
         <>
-          <button
-            type="button"
-            onClick={() => handlePageClick(1)}
+          <Link
+            href={getPageHref(1)}
+            onClick={scrollTopNow}
             className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
           >
             1
-          </button>
+          </Link>
           {pageWindow[0] > 2 && <span className="px-1 text-gray-500 font-bold">…</span>}
         </>
       )}
 
       {pageWindow.map((p) => (
-        <button
+        <Link
           key={p}
-          type="button"
-          onClick={() => handlePageClick(p)}
+          href={getPageHref(p)}
+          onClick={scrollTopNow}
+          aria-current={page === p ? 'page' : undefined}
           className={`px-4 py-2.5 rounded-full font-bold transition text-sm md:text-base ${
             page === p
               ? 'bg-[#FF9900] text-black shadow-md'
@@ -524,7 +480,7 @@ export default function HomeClient({
           }`}
         >
           {p}
-        </button>
+        </Link>
       ))}
 
       {pageWindow[pageWindow.length - 1] < MAX_PAGES && (
@@ -532,24 +488,29 @@ export default function HomeClient({
           {pageWindow[pageWindow.length - 1] < MAX_PAGES - 1 && (
             <span className="px-1 text-gray-500 font-bold">…</span>
           )}
-          <button
-            type="button"
-            onClick={() => handlePageClick(MAX_PAGES)}
+          <Link
+            href={getPageHref(MAX_PAGES)}
+            onClick={scrollTopNow}
             className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
           >
             {MAX_PAGES}
-          </button>
+          </Link>
         </>
       )}
 
-      <button
-        type="button"
-        onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
-        disabled={page >= MAX_PAGES}
-        className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold disabled:opacity-40 transition text-sm md:text-base"
-      >
-        Next →
-      </button>
+      {page < MAX_PAGES ? (
+        <Link
+          href={getPageHref(page + 1)}
+          onClick={scrollTopNow}
+          className="px-4 py-2.5 bg-[#222] hover:bg-[#FF9900] hover:text-black text-white rounded-full font-bold transition text-sm md:text-base"
+        >
+          Next →
+        </Link>
+      ) : (
+        <span className="px-4 py-2.5 bg-[#222] text-white rounded-full font-bold opacity-40 text-sm md:text-base">
+          Next →
+        </span>
+      )}
     </nav>
   );
 
@@ -710,9 +671,11 @@ export default function HomeClient({
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h1 className="text-2xl md:text-3xl font-black text-[#FF9900] capitalize">
-            {urlQuery ? `${urlQuery} Videos` : 'Trending Desi Videos, Viral MMS & HD Porn'}
+            {urlQuery
+              ? `${urlQuery} Videos${page > 1 ? ` - Page ${page}` : ''}`
+              : `Trending Desi Videos, Viral MMS & HD Porn${page > 1 ? ` - Page ${page}` : ''}`}
           </h1>
-          {(urlQuery || isCategoryRoute) && (
+          {(urlQuery || isCategoryRoute || page > 1) && (
             <Link
               href="/"
               onClick={scrollTopNow}
@@ -726,8 +689,8 @@ export default function HomeClient({
         {/* Top Banner Ad */}
         <JuicyBanner />
 
-        {/* Homepage MMS Reels Shelf */}
-        {reelStripVideos.length > 0 && (
+        {/* Homepage MMS Reels Shelf — Shown ONLY on the main homepage (Page 1) */}
+        {isMainHomepage && reelStripVideos.length > 0 && (
           <section className="mt-6 mb-8 bg-[#121212] border border-gray-800/90 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -817,76 +780,13 @@ export default function HomeClient({
           )}
         </div>
 
-        {/* Bottom Pagination Only */}
+        {/* Crawlable Bottom Pagination */}
         <div className="mt-10">
           {renderPaginationBar()}
         </div>
 
         {/* Post-Pagination Ad */}
         <JuicyBanner adzone={1133788} width={308} height={286} />
-
-        {/* Smart Multi-Topic Similar Videos Section */}
-        {!loading && similarVideos.length > 0 && (
-          <section className="mt-14 pt-8 border-t border-gray-800">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <h2 className="text-xl md:text-2xl font-black text-[#FF9900]">
-                Similar Videos You May Like
-              </h2>
-              <button
-                onClick={() => handlePageClick(Math.min(MAX_PAGES, page + 1))}
-                className="text-sm font-bold text-[#FF9900] hover:underline"
-              >
-                Next Page →
-              </button>
-            </div>
-
-            {similarTopics.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-3">
-                <button
-                  type="button"
-                  onClick={() => handleSimilarTopicClick('ALL')}
-                  className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-bold shrink-0 transition border ${
-                    activeSimTopic === 'ALL'
-                      ? 'bg-[#FF9900] text-black border-[#FF9900]'
-                      : 'bg-[#161616] text-gray-300 border-gray-800 hover:border-[#FF9900]'
-                  }`}
-                >
-                  All Matched ({similarTopics.join(' + ')})
-                </button>
-                {similarTopics.map((topic) => (
-                  <button
-                    key={topic}
-                    type="button"
-                    onClick={() => handleSimilarTopicClick(topic)}
-                    className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-bold shrink-0 transition border ${
-                      activeSimTopic === topic
-                        ? 'bg-[#FF9900] text-black border-[#FF9900]'
-                        : 'bg-[#161616] text-gray-300 border-gray-800 hover:border-[#FF9900]'
-                    }`}
-                  >
-                    {topic}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {loadingSimilar ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                {[...Array(10)].map((_, i) => (
-                  <div key={i} className="bg-[#1a1a1a] rounded-2xl aspect-video animate-pulse" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                {similarVideos.map((v) => (
-                  <Link key={`sim-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
-                    <VideoCard video={v} />
-                  </Link>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
 
         {!loading && recentHistory.length > 0 && (
           <section className="mt-12 pt-8 border-t border-gray-800">

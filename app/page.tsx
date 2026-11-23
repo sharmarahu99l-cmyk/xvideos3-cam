@@ -1,26 +1,22 @@
-import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import HomeClient from './HomeClient';
-import type { StoredVideo } from './lib/userPrefs';
+import { StoredVideo } from './lib/userPrefs';
 
-async function getInitialDesiVideos(query: string, page: number): Promise<StoredVideo[]> {
-  const term = query.trim() || 'desi';
+async function getInitialVideos(query: string, page: number): Promise<StoredVideo[]> {
+  const searchTerm = query.trim() || 'desi';
   try {
     const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(term)}&per_page=30&page=${page}&order=most_viewed&thumbsize=big&format=json`,
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
+        searchTerm
+      )}&per_page=30&page=${page}&order=most-popular&lq=0&thumbsize=big&format=json`,
       {
-        next: { revalidate: 1800 },
+        next: { revalidate: 900 },
         headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36' },
       }
     );
     if (!res.ok) return [];
     const data = await res.json();
-    const raw: StoredVideo[] = Array.isArray(data.videos) ? data.videos : [];
-    return raw.filter((v) => {
-      const src = v?.default_thumb?.src?.trim() || '';
-      const secs = (Number(v.length_min) || 0) * 60 + (Number(v.length_sec) || 0);
-      return Boolean(v?.id && v?.title && src.startsWith('http') && secs > 5);
-    });
+    return Array.isArray(data.videos) ? data.videos : [];
   } catch {
     return [];
   }
@@ -31,31 +27,28 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<{ q?: string; page?: string }>;
 }): Promise<Metadata> {
-  const sp = await searchParams;
-  const q = sp.q?.trim() || '';
-  const page = Math.max(1, Number(sp.page) || 1);
-
-  const canonicalParams = new URLSearchParams();
-  if (q) canonicalParams.set('q', q);
-  if (page > 1) canonicalParams.set('page', String(page));
-  const canonicalPath = canonicalParams.toString() ? `/?${canonicalParams.toString()}` : '/';
+  const params = await searchParams;
+  const q = typeof params?.q === 'string' ? params.q.trim() : '';
+  const page = Math.max(1, Number(params?.page) || 1);
 
   if (q) {
+    const qs = new URLSearchParams({ q });
+    if (page > 1) qs.set('page', String(page));
     return {
-      title: `${q} Videos${page > 1 ? ` - Page ${page}` : ''} | Free HD Desi Videos & Porn`,
-      description: `Watch unlimited free ${q} HD videos${page > 1 ? ` (Page ${page})` : ''}, viral Desi MMS, Indian bhabhi, and new Desi clips streaming fast on HubTube (XVideos3.cam).`,
-      alternates: { canonical: canonicalPath },
+      title: `${q} Videos${page > 1 ? ` - Page ${page}` : ''} | HubTube - XVideos3 HD`,
+      description: `Watch free HD ${q} videos and viral clips${page > 1 ? ` (Page ${page})` : ''} streaming fast on HubTube (XVideos3.cam).`,
+      alternates: { canonical: `/?${qs.toString()}` },
     };
   }
 
   return {
     title:
       page > 1
-        ? `Desi Videos, Desi Porn & Viral Desi MMS - Page ${page} | HubTube XVideos3`
-        : 'Desi Videos, Desi Porn, Viral Desi MMS & Free HD Indian Videos | HubTube XVideos3',
+        ? `Trending Desi Videos, Viral MMS & HD Porn - Page ${page} | HubTube XVideos3`
+        : 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube XVideos3',
     description:
-      'Watch latest new Desi videos, Desi porn, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and Hindi audio HD videos streaming free on HubTube (XVideos3.cam).',
-    alternates: { canonical: canonicalPath },
+      'Watch latest new Desi videos, viral Desi MMS, Hindi audio bhabhi, Indian aunty, Punjabi kudi, Pakistani MMS, and 4K HD videos streaming free on HubTube (XVideos3.cam).',
+    alternates: { canonical: page > 1 ? `/?page=${page}` : '/' },
   };
 }
 
@@ -64,33 +57,10 @@ export default async function HomePage({
 }: {
   searchParams: Promise<{ q?: string; page?: string }>;
 }) {
-  const sp = await searchParams;
-  const q = sp.q?.trim() || '';
-  const page = Math.max(1, Number(sp.page) || 1);
-  const initialVideos = await getInitialDesiVideos(q, page);
+  const params = await searchParams;
+  const q = typeof params?.q === 'string' ? params.q : '';
+  const page = Math.max(1, Number(params?.page) || 1);
+  const initialVideos = await getInitialVideos(q, page);
 
-  const siteSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'HubTube - XVideos3',
-    alternateName: ['XVideos3', 'XVideos3.cam', 'HubTube Desi'],
-    url: 'https://xvideos3.cam',
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: 'https://xvideos3.cam/?q={search_term_string}',
-      'query-input': 'required name=search_term_string',
-    },
-  };
-
-  return (
-    <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteSchema) }}
-      />
-      <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a]" />}>
-        <HomeClient initialVideos={initialVideos} initialQuery={q} initialPage={page} />
-      </Suspense>
-    </>
-  );
+  return <HomeClient initialVideos={initialVideos} initialQuery={q} initialPage={page} />;
 }
