@@ -27,28 +27,29 @@ interface ReelCategoryPill {
 
 const FOR_YOU_KEY = '__for_you_fresh__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
-const SEEN_REELS_KEY = 'hubtube_seen_reels_v3';
+const SEEN_REELS_KEY = 'hubtube_seen_reels_ep_v1';
 const UNMUTED_PREF_KEY = 'hubtube_reels_unmuted_v1';
 
 const TOPIC_ROTATION_POOL = [
-  'desi', 'indian', 'bhabhi', 'homemade', 'amateur', 'viral',
-  'punjabi', 'hindi', 'couple', 'asian', 'milf', 'big tits',
-  'latina', 'teen', 'pov', 'aunty', 'japanese', 'big ass',
-  'hardcore', 'solo', 'massage', 'public', 'lingerie',
+  'mms', 'leaked mms', 'desi mms', 'desi bhabhi', 'viral', 'indian homemade',
+  'amateur', 'punjabi', 'hindi audio', 'desi couple', '4k', 'asian',
+  'milf', 'big tits', 'homemade', 'latina', 'teen', 'pov', 'indian aunty',
+  'japanese', 'big ass', 'hardcore', 'solo', 'massage',
 ];
 
 const INSTANT_DESI = [
-  'Desi', 'Desi Bhabhi', 'Desi Aunty', 'Indian Bhabhi', 'Indian Homemade',
-  'Punjabi Desi', 'Pakistani', 'Hindi Audio', 'Desi Couple', 'Indian Girl',
-  'South Indian', 'Tamil', 'Bengali Bhabhi', 'Mallu Aunty',
+  'MMS', 'Leaked MMS', 'Desi MMS', 'Viral MMS', 'Desi', 'Desi Bhabhi',
+  'Desi Aunty', 'Indian Bhabhi', 'Indian Homemade', 'Punjabi Desi',
+  'Pakistani MMS', 'Hindi Audio', 'Desi Couple', 'Desi College Girl',
+  'South Indian Desi', 'Tamil Desi', 'Bengali Bhabhi', 'Mallu Aunty',
 ];
 
 const INSTANT_CATEGORIES = [
-  'Amateur', 'Homemade', '4K', '1080p', 'Asian', 'Japanese',
+  'Amateur', 'Homemade', '4K', '1080p', '60 FPS', 'Asian', 'Japanese',
   'Korean', 'Latina', 'Ebony', 'Russian', 'Indian', 'Arab', 'Anal',
   'Big Tits', 'Big Ass', 'MILF', 'Teen', 'Petite', 'Blonde', 'Brunette',
   'POV', 'Creampie', 'Hardcore', 'Threesome', 'Lesbian', 'Public',
-  'Massage', 'Lingerie', 'Solo',
+  'Massage', 'Lingerie', 'Solo', 'VR Porn',
 ];
 
 const INSTANT_PORNSTARS = [
@@ -60,7 +61,7 @@ const INSTANT_PORNSTARS = [
 ];
 
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
-  desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
+  desi: { text: 'MMS/DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
   category: { text: 'CAT', cls: 'bg-blue-500/20 text-blue-300' },
   pornstar: { text: 'STAR', cls: 'bg-pink-500/20 text-pink-300' },
   video: { text: 'REEL', cls: 'bg-neutral-700 text-neutral-300' },
@@ -230,6 +231,10 @@ function formatDuration(lengthSec?: number | string, lengthMin?: number | string
   if (typeof lengthMin === 'string' && lengthMin.includes(':')) {
     return lengthMin.trim();
   }
+  const minsNum = Number(lengthMin);
+  if (!Number.isNaN(minsNum) && minsNum > 0) {
+    return `${Math.floor(minsNum)}:00`;
+  }
   return 'HD';
 }
 
@@ -238,7 +243,10 @@ function validThumb(v: ReelVideo): boolean {
   return Boolean(v?.id && v?.title && src.startsWith('http'));
 }
 
-function sendPlayerCommand(iframe: HTMLIFrameElement | null, cmd: 'play' | 'pause' | 'mute' | 'unmute') {
+function sendPlayerCommand(
+  iframe: HTMLIFrameElement | null,
+  cmd: 'play' | 'pause' | 'mute' | 'unmute'
+) {
   if (!iframe?.contentWindow) return;
   const vol = cmd === 'mute' ? 0 : 100;
   const messages =
@@ -266,22 +274,40 @@ function sendPlayerCommand(iframe: HTMLIFrameElement | null, cmd: 'play' | 'paus
   }
 }
 
-async function fetchReelsFromDedicatedApi(
+async function fetchReelsFromEpornerApi(
   query: string,
   pageNum: number,
-  order: 'mostviewed' | 'newest' | 'rating'
+  order: 'top-weekly' | 'latest' | 'most-popular'
 ): Promise<ReelVideo[]> {
   try {
     const res = await fetch(
       `/api/reels-feed?q=${encodeURIComponent(query)}&page=${pageNum}&order=${order}`,
       { cache: 'no-store' }
     );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? (data as ReelVideo[]).filter(validThumb) : [];
-  } catch {
-    return [];
-  }
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return (data as ReelVideo[]).filter(validThumb);
+      }
+    }
+  } catch {}
+
+  try {
+    const direct = await fetch(
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
+        query
+      )}&per_page=16&page=${pageNum}&order=${order}&lq=0&thumbsize=big&format=json`,
+      { cache: 'no-store' }
+    );
+    if (direct.ok) {
+      const data = await direct.json();
+      return Array.isArray(data?.videos)
+        ? (data.videos as ReelVideo[]).filter(validThumb)
+        : [];
+    }
+  } catch {}
+
+  return [];
 }
 
 async function fetchFreshUniqueBatch(
@@ -290,10 +316,10 @@ async function fetchFreshUniqueBatch(
   isFirstPage: boolean = false
 ): Promise<ReelVideo[]> {
   const storedSeen = getSeenIds();
-  const orders: Array<'mostviewed' | 'newest' | 'rating'> = [
-    'mostviewed',
-    'newest',
-    'rating',
+  const orders: Array<'top-weekly' | 'latest' | 'most-popular'> = [
+    'top-weekly',
+    'latest',
+    'most-popular',
   ];
 
   let batches: ReelVideo[][] = [];
@@ -302,16 +328,16 @@ async function fetchFreshUniqueBatch(
     const randomTopics = shuffleArray(TOPIC_ROTATION_POOL).slice(0, 3);
     batches = await Promise.all(
       randomTopics.map((topic, idx) => {
-        const randPage = Math.floor(Math.random() * 8) + 1;
-        return fetchReelsFromDedicatedApi(topic, randPage, orders[idx % orders.length]);
+        const randPage = Math.floor(Math.random() * 12) + 1;
+        return fetchReelsFromEpornerApi(topic, randPage, orders[idx % orders.length]);
       })
     );
   } else {
-    const pageA = isFirstPage ? 1 : Math.floor(Math.random() * 4) + 1;
+    const pageA = isFirstPage ? 1 : Math.floor(Math.random() * 5) + 1;
     const pageB = pageA + 1;
     batches = await Promise.all([
-      fetchReelsFromDedicatedApi(categoryQuery, pageA, 'mostviewed'),
-      fetchReelsFromDedicatedApi(categoryQuery, pageB, 'rating'),
+      fetchReelsFromEpornerApi(categoryQuery, pageA, 'most-popular'),
+      fetchReelsFromEpornerApi(categoryQuery, pageB, 'top-weekly'),
     ]);
   }
 
@@ -554,7 +580,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setIsPaused((prev) => {
       const nextPaused = !prev;
       if (!nextPaused) {
-        // Increment playSession so the iframe boots fresh with autostart=1 immediately on resume
         setPlaySession((s) => s + 1);
       }
       return nextPaused;
@@ -670,7 +695,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   const handleShare = async (e: React.MouseEvent, video: ReelVideo) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/reels`;
+    const url = `${window.location.origin}/reels?start=${encodeURIComponent(video.id)}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: video.title, url });
@@ -679,7 +704,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     try {
       await navigator.clipboard.writeText(url);
-      setToast('Reels link copied!');
+      setToast('Reel link copied!');
       setTimeout(() => setToast(''), 2000);
     } catch {}
   };
@@ -842,11 +867,10 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
 
-            // RedTube official embed uses autostart=1 (starts playing immediately without showing center play button)
             const muteFlag = isUnmuted ? '0' : '1';
-            const redtubeEmbedUrl = `https://embed.redtube.com/?id=${encodeURIComponent(
+            const epornerEmbedUrl = `https://www.eporner.com/embed/${encodeURIComponent(
               v.id
-            )}&bgcolor=000000&autostart=1&autoplay=1&mute=${muteFlag}&muted=${muteFlag}`;
+            )}/?autoplay=1&autostart=1&mute=${muteFlag}&muted=${muteFlag}`;
 
             return (
               <section
@@ -867,15 +891,15 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Active Sandboxed Stream Player (autostart=1 plays immediately; sandbox blocks all redirects) */}
+                  {/* Active Sandboxed Eporner Stream Player (Blocks all outbound redirects) */}
                   {isActive && !isPaused && (
                     <div className="absolute inset-0 z-10 overflow-hidden bg-black">
                       <iframe
                         ref={(el) => {
                           if (isActive) activeIframeRef.current = el;
                         }}
-                        key={`rt-reel-${v.id}-${playSession}-${isUnmuted ? 'u' : 'm'}`}
-                        src={redtubeEmbedUrl}
+                        key={`ep-reel-${v.id}-${playSession}-${isUnmuted ? 'u' : 'm'}`}
+                        src={epornerEmbedUrl}
                         title={v.title}
                         onLoad={(e) => {
                           sendPlayerCommand(e.currentTarget, 'play');
@@ -1021,6 +1045,19 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         {isLiked ? 'Liked' : 'Like'}
                       </span>
                     </button>
+
+                    {/* Watch Full Page */}
+                    <Link
+                      href={`/watch/${v.id}`}
+                      className="flex flex-col items-center gap-1 group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">Watch</span>
+                    </Link>
 
                     {/* Share */}
                     <button
