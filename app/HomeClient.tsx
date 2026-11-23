@@ -11,9 +11,15 @@ import {
   getWatchHistory,
   normalizeTitleKey,
 } from './lib/userPrefs';
-import { SEO_DESI_HUB_LINKS, toCategorySlug } from './lib/seoData';
+import {
+  SEO_DESI_HUB_LINKS,
+  ALL_CATEGORIES,
+  ALL_PORNSTARS,
+  toCategorySlug,
+} from './lib/seoData';
 
 type Video = StoredVideo;
+type TaggedReel = Video & { _topic?: string };
 
 type SearchHint = {
   label: string;
@@ -28,6 +34,7 @@ interface HomeClientProps {
 
 const PER_PAGE = 30;
 const MAX_PAGES = 200;
+const HOME_SEEN_REELS_KEY = 'hubtube_home_seen_reels_v2';
 
 const INSTANT_DESI = [
   "Desi", "Desi Videos", "Desi Porn", "Desi Bhabhi", "Desi Aunty", "Desi MMS",
@@ -95,6 +102,36 @@ function scrollTopNow() {
 function validThumb(v: Video): boolean {
   const src = v?.default_thumb?.src?.trim() || '';
   return Boolean(v?.id && v?.title && src.startsWith('http'));
+}
+
+function shufflePool<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function getHomeSeenReelIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(HOME_SEEN_REELS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHomeSeenReelIds(ids: string[]) {
+  if (typeof window === 'undefined' || ids.length === 0) return;
+  try {
+    const existing = Array.from(getHomeSeenReelIds());
+    const merged = Array.from(new Set([...ids, ...existing])).slice(0, 350);
+    localStorage.setItem(HOME_SEEN_REELS_KEY, JSON.stringify(merged));
+  } catch {}
 }
 
 function getInstantLocalHints(query: string): SearchHint[] {
@@ -175,6 +212,32 @@ async function fetchVideos(
   return [];
 }
 
+async function fetchRandomTopicReels(
+  topic: string,
+  pageNum: number,
+  order: string
+): Promise<TaggedReel[]> {
+  try {
+    const direct = await fetch(
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
+        topic
+      )}&per_page=8&page=${pageNum}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`,
+      { cache: 'no-store' }
+    );
+    if (direct.ok) {
+      const data = await direct.json();
+      if (Array.isArray(data.videos) && data.videos.length > 0) {
+        return (data.videos as Video[])
+          .filter(validThumb)
+          .map((v) => ({ ...v, _topic: topic }));
+      }
+    }
+  } catch {}
+
+  const fallback = await fetchVideos(topic, pageNum, 8, order);
+  return fallback.map((v) => ({ ...v, _topic: topic }));
+}
+
 const HINT_BADGE: Record<SearchHint['type'], { text: string; cls: string }> = {
   desi: { text: 'DESI', cls: 'bg-[#FF9900]/20 text-[#FF9900]' },
   category: { text: 'CAT', cls: 'bg-blue-500/20 text-blue-300' },
@@ -197,14 +260,19 @@ export default function HomeClient({
   const urlQuery = searchParams?.get('q') ?? initialQuery;
   const urlPage = Math.min(MAX_PAGES, Math.max(1, Number(searchParams?.get('page')) || initialPage));
 
-  // Show the full MMS Reels shelf ONLY on the main homepage (Page 1, no search/category/pornstar filter)
+  // Show the full Reels preview shelf ONLY on the main homepage (Page 1, no search/category/pornstar filter)
   const isMainHomepage = !isSubListingRoute && !urlQuery.trim() && urlPage === 1;
+
   const validInitial = initialVideos.filter(validThumb);
   const hasSSRMatch =
     validInitial.length > 0 && urlQuery === initialQuery && urlPage === initialPage;
 
   const [videos, setVideos] = useState<Video[]>(hasSSRMatch ? validInitial : []);
-  const [trendingReels, setTrendingReels] = useState<Video[]>([]);
+  const [trendingReels, setTrendingReels] = useState<TaggedReel[]>([]);
+  const [loadingReels, setLoadingReels] = useState<boolean>(true);
+  const [reelOffset, setReelOffset] = useState<number>(0);
+  const [pauseReels, setPauseReels] = useState<boolean>(false);
+
   const [recentHistory, setRecentHistory] = useState<Video[]>([]);
   const [loading, setLoading] = useState<boolean>(!hasSSRMatch);
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
@@ -218,51 +286,74 @@ export default function HomeClient({
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
- const [reelOffset, setReelOffset] = useState<number>(0);
-  const [pauseReels, setPauseReels] = useState<boolean>(false);
-
-  // Load wide-range pool of Reels ONLY when on the main homepage
+  // Load brand-new randomized Reels from ALL Categories & Pornstars on EVERY main page refresh
   useEffect(() => {
     if (!isMainHomepage) return;
     let active = true;
 
-    const loadWideReelsPool = async () => {
-      const [mmsWeekly, leakedMms, desiMms, bhabhiPopular, viralLatest, amateurTop] =
-        await Promise.all([
-          fetchVideos('mms', 1, 10, 'top-weekly'),
-          fetchVideos('leaked mms', 1, 10, 'most-popular'),
-          fetchVideos('desi mms', 1, 10, 'latest'),
-          fetchVideos('desi bhabhi', 1, 10, 'top-weekly'),
-          fetchVideos('viral', 1, 10, 'top-weekly'),
-          fetchVideos('amateur', 1, 10, 'most-popular'),
-        ]);
+    const loadDiverseFreshReels = async () => {
+      setLoadingReels(true);
+
+      const fullUniverse = Array.from(
+        new Set([...ALL_CATEGORIES, ...ALL_PORNSTARS, ...SEO_DESI_HUB_LINKS])
+      );
+
+      // Pick 8 random topics (mix of categories & pornstars) on every refresh
+      const pickedTopics = shufflePool(fullUniverse).slice(0, 8);
+      const orders = ['top-weekly', 'latest', 'most-popular', 'top-rated'];
+
+      const batches = await Promise.all(
+        pickedTopics.map((topic, idx) => {
+          const randomPage = Math.floor(Math.random() * 12) + 1;
+          return fetchRandomTopicReels(topic, randomPage, orders[idx % orders.length]);
+        })
+      );
+
       if (!active) return;
 
-      const batches = [mmsWeekly, leakedMms, desiMms, bhabhiPopular, viralLatest, amateurTop];
-      const seen = new Set<string>();
-      const merged: Video[] = [];
-      const maxLen = batches.reduce((m, b) => Math.max(m, b.length), 0);
+      const previouslySeen = getHomeSeenReelIds();
+      const seenIds = new Set<string>();
+      const seenTitles = new Set<string>();
+      const freshUnseen: TaggedReel[] = [];
+      const backupSeen: TaggedReel[] = [];
 
+      const maxLen = batches.reduce((m, b) => Math.max(m, b.length), 0);
       for (let i = 0; i < maxLen; i++) {
         for (const batch of batches) {
           const v = batch[i];
-          if (v && validThumb(v) && !seen.has(v.id)) {
-            seen.add(v.id);
-            merged.push(v);
+          if (!v || !validThumb(v) || seenIds.has(v.id)) continue;
+          const norm = normalizeTitleKey(v.title);
+          if (seenTitles.has(norm)) continue;
+
+          seenIds.add(v.id);
+          seenTitles.add(norm);
+
+          if (!previouslySeen.has(v.id)) {
+            freshUnseen.push(v);
+          } else {
+            backupSeen.push(v);
           }
         }
       }
-      setTrendingReels(merged.slice(0, 48));
+
+      // Shuffle so every single refresh starts with completely different videos
+      const finalPool = shufflePool(
+        freshUnseen.length >= 12 ? freshUnseen : [...freshUnseen, ...backupSeen]
+      ).slice(0, 54);
+
+      saveHomeSeenReelIds(finalPool.map((v) => v.id));
+      setTrendingReels(finalPool);
       setReelOffset(0);
+      setLoadingReels(false);
     };
 
-    loadWideReelsPool();
+    loadDiverseFreshReels();
     return () => {
       active = false;
     };
   }, [isMainHomepage]);
 
-  // Rotate visible Reels preview every 2 seconds unless user hovers/touches
+  // Rotate homepage Reels every 2 seconds across the randomized pool
   useEffect(() => {
     if (!isMainHomepage || pauseReels || trendingReels.length <= 6) return;
     const timer = setInterval(() => {
@@ -279,7 +370,7 @@ export default function HomeClient({
       setSearchQuery(urlQuery);
       setPage(urlPage);
 
-     if (urlQuery.trim()) {
+      if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
         if (!isSubListingRoute) {
           document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
@@ -326,7 +417,7 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, [urlQuery, urlPage, initialQuery, initialPage, isCategoryRoute]);
+  }, [urlQuery, urlPage, initialQuery, initialPage, isSubListingRoute]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -402,7 +493,7 @@ export default function HomeClient({
     navigateToSearch(searchQuery, 1);
   };
 
- const handleHintSelect = (hint: SearchHint) => {
+  const handleHintSelect = (hint: SearchHint) => {
     setSearchQuery(hint.label);
     if (hint.type === 'pornstar') {
       setShowHints(false);
@@ -438,7 +529,6 @@ export default function HomeClient({
     }
   };
 
-  // Builds real crawlable <a href="..."> URLs for Googlebot, Bingbot & Yandex
   const getPageHref = (pageNum: number): string => {
     const safePage = Math.min(MAX_PAGES, Math.max(1, pageNum));
     if (isSubListingRoute) {
@@ -461,12 +551,13 @@ export default function HomeClient({
   };
 
   const pageWindow = getPageWindow(page, MAX_PAGES);
-const reelStripVideos =
+  const reelStripVideos: TaggedReel[] =
     trendingReels.length > 0
       ? Array.from({ length: Math.min(10, trendingReels.length) }, (_, i) =>
           trendingReels[(reelOffset + i) % trendingReels.length]
         )
-      : videos.slice(0, 10);
+      : [];
+
   const renderPaginationBar = () => (
     <nav
       aria-label="Pagination"
@@ -707,7 +798,7 @@ const reelStripVideos =
               ? `${urlQuery} Videos${page > 1 ? ` - Page ${page}` : ''}`
               : `Trending Desi Videos, Viral MMS & HD Porn${page > 1 ? ` - Page ${page}` : ''}`}
           </h1>
-          {(urlQuery || isCategoryRoute || page > 1) && (
+          {(urlQuery || isSubListingRoute || page > 1) && (
             <Link
               href="/"
               onClick={scrollTopNow}
@@ -721,8 +812,8 @@ const reelStripVideos =
         {/* Top Banner Ad */}
         <JuicyBanner />
 
-        {/* Homepage MMS Reels Shelf — Shown ONLY on the main homepage (Page 1) */}
- {isMainHomepage && reelStripVideos.length > 0 && (
+        {/* Homepage Reels Shelf — Brand-New Randomized Pool on Every Refresh, Rotates Every 2s */}
+        {isMainHomepage && (
           <section
             onMouseEnter={() => setPauseReels(true)}
             onMouseLeave={() => setPauseReels(false)}
@@ -736,7 +827,7 @@ const reelStripVideos =
                   ▶ REELS
                 </span>
                 <h2 className="text-lg md:text-xl font-black text-white">
-                  MMS Reels
+                  Trending Reels
                 </h2>
               </div>
               <Link
@@ -747,34 +838,45 @@ const reelStripVideos =
               </Link>
             </div>
 
-            <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
-              {reelStripVideos.map((v) => (
-                <Link
-                  key={`reel-card-${v.id}`}
-                  href={`/reels?start=${encodeURIComponent(v.id)}`}
-                  className="group relative w-36 sm:w-44 aspect-[9/16] shrink-0 rounded-2xl overflow-hidden bg-black border border-gray-800 hover:border-[#FF9900] transition snap-start shadow-lg"
-                >
-                  <img
-                    src={v.default_thumb.src}
-                    alt={v.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+            {loadingReels && reelStripVideos.length === 0 ? (
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {[...Array(7)].map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="w-36 sm:w-44 aspect-[9/16] shrink-0 rounded-2xl bg-[#1c1c1c] border border-gray-800 animate-pulse"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-transparent" />
-                  <span className="absolute top-2 left-2 bg-black/75 text-[#FF9900] text-[10px] font-black px-2 py-0.5 rounded-full border border-[#FF9900]/40">
-                    🔥 MMS REEL
-                  </span>
-                  <div className="absolute bottom-2.5 left-2.5 right-2.5">
-                    <p className="text-white text-xs font-bold line-clamp-2 leading-snug drop-shadow">
-                      {v.title}
-                    </p>
-                    {v.views !== undefined && (
-                      <p className="text-[10px] text-gray-300 mt-1">👁 {v.views}</p>
-                    )}
-                  </div>
-                </Link>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+                {reelStripVideos.map((v, idx) => (
+                  <Link
+                    key={`reel-card-${v.id}-${reelOffset}-${idx}`}
+                    href="/reels"
+                    className="group relative w-36 sm:w-44 aspect-[9/16] shrink-0 rounded-2xl overflow-hidden bg-black border border-gray-800 hover:border-[#FF9900] transition snap-start shadow-lg"
+                  >
+                    <img
+                      src={v.default_thumb.src}
+                      alt={v.title}
+                      loading="eager"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-transparent" />
+                    <span className="absolute top-2 left-2 bg-black/75 text-[#FF9900] text-[10px] font-black px-2 py-0.5 rounded-full border border-[#FF9900]/40 uppercase">
+                      🔥 {v._topic || 'REEL'}
+                    </span>
+                    <div className="absolute bottom-2.5 left-2.5 right-2.5">
+                      <p className="text-white text-xs font-bold line-clamp-2 leading-snug drop-shadow">
+                        {v.title}
+                      </p>
+                      {v.views !== undefined && (
+                        <p className="text-[10px] text-gray-300 mt-1">👁 {v.views}</p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
