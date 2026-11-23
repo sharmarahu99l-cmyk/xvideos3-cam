@@ -17,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+      <meta name="RATING" content="RTA-5042-1996-1400-1577-RTA" />
         <meta name="google-adsense-account" content="ca-pub-2014909859491780" />
       </head>
       <body className="bg-[#0a0a0a] text-[#ddd]">
