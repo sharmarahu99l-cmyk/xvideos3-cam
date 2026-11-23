@@ -218,38 +218,58 @@ export default function HomeClient({
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
 
-  // Load MMS Reels ONLY when on the main homepage
+ const [reelOffset, setReelOffset] = useState<number>(0);
+  const [pauseReels, setPauseReels] = useState<boolean>(false);
+
+  // Load wide-range pool of Reels ONLY when on the main homepage
   useEffect(() => {
     if (!isMainHomepage) return;
     let active = true;
 
-    const loadMmsReels = async () => {
-      const [weekly, latest, popular] = await Promise.all([
-        fetchVideos('mms', 1, 10, 'top-weekly'),
-        fetchVideos('mms', 1, 10, 'latest'),
-        fetchVideos('mms', 1, 10, 'most-popular'),
-      ]);
+    const loadWideReelsPool = async () => {
+      const [mmsWeekly, leakedMms, desiMms, bhabhiPopular, viralLatest, amateurTop] =
+        await Promise.all([
+          fetchVideos('mms', 1, 10, 'top-weekly'),
+          fetchVideos('leaked mms', 1, 10, 'most-popular'),
+          fetchVideos('desi mms', 1, 10, 'latest'),
+          fetchVideos('desi bhabhi', 1, 10, 'top-weekly'),
+          fetchVideos('viral', 1, 10, 'top-weekly'),
+          fetchVideos('amateur', 1, 10, 'most-popular'),
+        ]);
       if (!active) return;
 
+      const batches = [mmsWeekly, leakedMms, desiMms, bhabhiPopular, viralLatest, amateurTop];
       const seen = new Set<string>();
       const merged: Video[] = [];
-      const maxLen = Math.max(weekly.length, latest.length, popular.length);
+      const maxLen = batches.reduce((m, b) => Math.max(m, b.length), 0);
+
       for (let i = 0; i < maxLen; i++) {
-        for (const v of [weekly[i], latest[i], popular[i]]) {
+        for (const batch of batches) {
+          const v = batch[i];
           if (v && validThumb(v) && !seen.has(v.id)) {
             seen.add(v.id);
             merged.push(v);
           }
         }
       }
-      setTrendingReels(merged.slice(0, 12));
+      setTrendingReels(merged.slice(0, 48));
+      setReelOffset(0);
     };
 
-    loadMmsReels();
+    loadWideReelsPool();
     return () => {
       active = false;
     };
   }, [isMainHomepage]);
+
+  // Rotate visible Reels preview every 2 seconds unless user hovers/touches
+  useEffect(() => {
+    if (!isMainHomepage || pauseReels || trendingReels.length <= 6) return;
+    const timer = setInterval(() => {
+      setReelOffset((prev) => (prev + 3) % trendingReels.length);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [isMainHomepage, pauseReels, trendingReels.length]);
 
   useEffect(() => {
     let active = true;
@@ -441,8 +461,12 @@ export default function HomeClient({
   };
 
   const pageWindow = getPageWindow(page, MAX_PAGES);
-  const reelStripVideos = trendingReels.length > 0 ? trendingReels : videos.slice(0, 12);
-
+const reelStripVideos =
+    trendingReels.length > 0
+      ? Array.from({ length: Math.min(10, trendingReels.length) }, (_, i) =>
+          trendingReels[(reelOffset + i) % trendingReels.length]
+        )
+      : videos.slice(0, 10);
   const renderPaginationBar = () => (
     <nav
       aria-label="Pagination"
@@ -698,8 +722,14 @@ export default function HomeClient({
         <JuicyBanner />
 
         {/* Homepage MMS Reels Shelf — Shown ONLY on the main homepage (Page 1) */}
-        {isMainHomepage && reelStripVideos.length > 0 && (
-          <section className="mt-6 mb-8 bg-[#121212] border border-gray-800/90 rounded-2xl p-4">
+ {isMainHomepage && reelStripVideos.length > 0 && (
+          <section
+            onMouseEnter={() => setPauseReels(true)}
+            onMouseLeave={() => setPauseReels(false)}
+            onTouchStart={() => setPauseReels(true)}
+            onTouchEnd={() => setPauseReels(false)}
+            className="mt-6 mb-8 bg-[#121212] border border-gray-800/90 rounded-2xl p-4"
+          >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="bg-[#FF9900] text-black text-xs font-black px-2.5 py-1 rounded-full">
