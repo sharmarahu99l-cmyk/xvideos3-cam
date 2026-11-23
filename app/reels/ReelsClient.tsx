@@ -25,8 +25,6 @@ interface ReelCategoryPill {
   query: string;
 }
 
-type VideoOrientation = 'vertical' | 'horizontal';
-
 const FOR_YOU_KEY = '__for_you_fresh__';
 const LIKES_KEY = 'hubtube_reel_likes_v1';
 const SEEN_REELS_KEY = 'hubtube_seen_reels_v1';
@@ -193,18 +191,6 @@ function deriveTopPillsFromVideos(
   return pills;
 }
 
-function inferInitialOrientation(v: ReelVideo): VideoOrientation {
-  const firstThumb = v?.thumbs?.[0];
-  if (firstThumb?.width && firstThumb?.height) {
-    return firstThumb.height > firstThumb.width ? 'vertical' : 'horizontal';
-  }
-  const text = `${v?.title || ''} ${v?.keywords || ''}`.toLowerCase();
-  if (/\b(vertical|9:16|shorts|tiktok|reels)\b/.test(text)) {
-    return 'vertical';
-  }
-  return 'horizontal';
-}
-
 function getInstantReelHints(query: string): SearchHint[] {
   const lowerQ = query.trim().toLowerCase();
   if (!lowerQ) return [];
@@ -238,12 +224,8 @@ function getInstantReelHints(query: string): SearchHint[] {
 function formatDuration(lengthSec?: number | string, lengthMin?: number | string): string {
   const totalSecs = Number(lengthSec);
   if (!Number.isNaN(totalSecs) && totalSecs > 0) {
-    const hrs = Math.floor(totalSecs / 3600);
-    const mins = Math.floor((totalSecs % 3600) / 60);
+    const mins = Math.floor(totalSecs / 60);
     const secs = Math.floor(totalSecs % 60);
-    if (hrs > 0) {
-      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
     return `${mins}:${String(secs).padStart(2, '0')}`;
   }
   if (typeof lengthMin === 'string' && lengthMin.includes(':')) {
@@ -374,13 +356,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Global Unmute state: once unmuted, stays unmuted across all reels until manually muted again
+  // Direct MP4 URLs resolved per video ID (no third-party iframe UI!)
+  const [streamUrls, setStreamUrls] = useState<Record<string, string>>({});
+  const [failedStreamIds, setFailedStreamIds] = useState<Record<string, boolean>>({});
+
+  // Persistent sound state across ALL reels: once unmuted, every reel stays unmuted until muted manually
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
+  const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover');
+  const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
 
-  const [orientations, setOrientations] = useState<Record<string, VideoOrientation>>({});
-  const [zoomedIds, setZoomedIds] = useState<Record<string, boolean>>({});
-
-  // Search input resets empty on every page refresh
+  // Search bar resets empty on refresh
   const [searchInput, setSearchInput] = useState<string>('');
   const [hints, setHints] = useState<SearchHint[]>([]);
   const [showHints, setShowHints] = useState<boolean>(false);
@@ -388,11 +375,58 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   const feedRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLElement | null>>([]);
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const loadingMoreRef = useRef<boolean>(false);
+  const resolvingIdsRef = useRef<Set<string>>(new Set());
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
+  const lastTapRef = useRef<number>(0);
 
-  // Restore saved likes + sound preference, and record initial SSR videos as seen
+  // Resolve direct MP4 stream for active reel and pre-buffer the next 2 reels
+  const ensureStreamResolved = useCallback(
+    async (videoId: string) => {
+      if (
+        !videoId ||
+        streamUrls[videoId] ||
+        failedStreamIds[videoId] ||
+        resolvingIdsRef.current.has(videoId)
+      ) {
+        return;
+      }
+
+      resolvingIdsRef.current.add(videoId);
+      try {
+        const res = await fetch(`/api/reel-stream/${encodeURIComponent(videoId)}`);
+        if (res.ok) {
+          const data: { url?: string | null } = await res.json();
+          if (data?.url) {
+            setStreamUrls((prev) => ({ ...prev, [videoId]: data.url! }));
+            resolvingIdsRef.current.delete(videoId);
+            return;
+          }
+        }
+        setFailedStreamIds((prev) => ({ ...prev, [videoId]: true }));
+      } catch {
+        setFailedStreamIds((prev) => ({ ...prev, [videoId]: true }));
+      } finally {
+        resolvingIdsRef.current.delete(videoId);
+      }
+    },
+    [streamUrls, failedStreamIds]
+  );
+
+  // Pre-resolve active reel + next 2 reels so swiping is instantaneous
+  useEffect(() => {
+    if (videos.length === 0) return;
+    const targets = [videos[activeIndex], videos[activeIndex + 1], videos[activeIndex + 2]];
+    for (const item of targets) {
+      if (item?.id) {
+        ensureStreamResolved(item.id);
+      }
+    }
+  }, [activeIndex, videos, ensureStreamResolved]);
+
+  // Restore saved likes + sound preference on mount
   useEffect(() => {
     try {
       const rawLikes = localStorage.getItem(LIKES_KEY);
@@ -414,6 +448,32 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Control native <video> playback & persistent mute state whenever active reel or sound changes
+  useEffect(() => {
+    const currentVideo = videos[activeIndex];
+    setIsPaused(false);
+    setProgress(0);
+
+    Object.entries(videoRefs.current).forEach(([vidId, el]) => {
+      if (!el) return;
+      if (currentVideo && vidId === currentVideo.id) {
+        el.muted = !isUnmuted;
+        el.currentTime = 0;
+        const playPromise = el.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            // If browser blocks unmuted autoplay on the very first load before a user tap,
+            // start muted seamlessly so it still autoplays immediately, then unmute on next tap
+            el.muted = true;
+            el.play().catch(() => {});
+          });
+        }
+      } else {
+        el.pause();
+      }
+    });
+  }, [activeIndex, videos, streamUrls, isUnmuted]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -535,31 +595,78 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, scrollToReel]);
 
-  const handleThumbLoad = (videoId: string, img: HTMLImageElement) => {
-    const { naturalWidth, naturalHeight } = img;
-    if (naturalWidth > 0 && naturalHeight > 0) {
-      const detected: VideoOrientation =
-        naturalHeight > naturalWidth ? 'vertical' : 'horizontal';
-      setOrientations((prev) =>
-        prev[videoId] === detected ? prev : { ...prev, [videoId]: detected }
-      );
+  // Toggle sound globally across ALL reels until muted manually again
+  const toggleGlobalSound = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const nextUnmuted = !isUnmuted;
+    setIsUnmuted(nextUnmuted);
+    try {
+      localStorage.setItem(UNMUTED_PREF_KEY, String(nextUnmuted));
+    } catch {}
+
+    const currentVideo = videos[activeIndex];
+    if (currentVideo) {
+      const el = videoRefs.current[currentVideo.id];
+      if (el) {
+        el.muted = !nextUnmuted;
+        if (el.paused) {
+          el.play().catch(() => {});
+          setIsPaused(false);
+        }
+      }
+    }
+
+    setToast(nextUnmuted ? '🔊 Sound On for all reels' : '🔇 Muted');
+    setTimeout(() => setToast(''), 1500);
+  };
+
+  // Real Reels interaction: Single tap pauses/plays (and unlocks audio if user enabled sound); Double tap likes
+  const handleReelSurfaceTap = (video: ReelVideo) => {
+    const now = Date.now();
+    const isDoubleTap = now - lastTapRef.current < 280;
+    lastTapRef.current = now;
+
+    if (isDoubleTap) {
+      setLikedIds((prev) => {
+        const next = { ...prev, [video.id]: true };
+        try {
+          localStorage.setItem(LIKES_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      setHeartBurstId(video.id);
+      setTimeout(() => setHeartBurstId(null), 700);
+      return;
+    }
+
+    const el = videoRefs.current[video.id];
+    if (!el) return;
+
+    // If user wanted sound on but browser started muted prior to gesture, unmute on tap
+    if (isUnmuted && el.muted) {
+      el.muted = false;
+      el.play().catch(() => {});
+      setIsPaused(false);
+      return;
+    }
+
+    if (el.paused) {
+      el.play().catch(() => {});
+      setIsPaused(false);
+    } else {
+      el.pause();
+      setIsPaused(true);
     }
   };
 
-  const toggleGlobalSound = () => {
-    setIsUnmuted((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(UNMUTED_PREF_KEY, String(next));
-      } catch {}
-      setToast(next ? '🔊 Sound Unmuted for all reels' : '🔇 Reels Muted');
-      setTimeout(() => setToast(''), 1800);
-      return next;
-    });
-  };
-
-  const toggleReelZoom = (videoId: string) => {
-    setZoomedIds((prev) => ({ ...prev, [videoId]: !prev[videoId] }));
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>, videoId: string) => {
+    e.stopPropagation();
+    const val = Number(e.target.value);
+    setProgress(val);
+    const el = videoRefs.current[videoId];
+    if (el && el.duration && !Number.isNaN(el.duration)) {
+      el.currentTime = (val / 100) * el.duration;
+    }
   };
 
   const executeReelSearch = async (rawTerm: string) => {
@@ -640,7 +747,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     }
   };
 
-  const toggleLike = (videoId: string) => {
+  const toggleLike = (e: React.MouseEvent, videoId: string) => {
+    e.stopPropagation();
     setLikedIds((prev) => {
       const next = { ...prev, [videoId]: !prev[videoId] };
       try {
@@ -650,7 +758,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     });
   };
 
-  const handleShare = async (video: ReelVideo) => {
+  const handleShare = async (e: React.MouseEvent, video: ReelVideo) => {
+    e.stopPropagation();
     const url = `${window.location.origin}/reels?start=${encodeURIComponent(video.id)}`;
     if (navigator.share) {
       try {
@@ -667,38 +776,44 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
   const activeBadgeText =
     activeCategory === FOR_YOU_KEY
-      ? '🔥 FOR YOU • FRESH'
+      ? '🔥 FOR YOU'
       : `🔥 ${activeCategory.toUpperCase()}`;
 
   return (
     <div className="relative h-[100dvh] w-full bg-black text-white overflow-hidden select-none">
-      {/* Compact Floating Top Header + Reels Search Bar + Dynamic Hint Pills */}
-      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/95 via-black/70 to-transparent pt-2.5 pb-4 px-3 pointer-events-none">
-        <div className="max-w-lg mx-auto flex items-center justify-between gap-2 pointer-events-auto">
+      {/* Sleek Instagram/TikTok-Style Floating Top Overlay */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/90 via-black/55 to-transparent pt-2.5 pb-4 px-3 pointer-events-none">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-2 pointer-events-auto">
           <Link
             href="/"
-            className="flex items-center gap-1 bg-black/70 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
+            className="flex items-center gap-1 bg-black/50 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-black border border-white/15 backdrop-blur-md transition shrink-0"
           >
             <span>←</span>
             <span>HOME</span>
           </Link>
 
-          <div className="flex items-center gap-0.5 text-base sm:text-lg font-black tracking-tight drop-shadow">
+          <div className="flex items-center gap-0.5 text-base font-black tracking-tight drop-shadow">
             <span className="text-[#FF9900]">H</span>
             <span className="text-white">UB</span>
             <span className="text-[#FF9900]">REELS</span>
           </div>
 
-          <Link
-            href="/history"
-            className="bg-black/70 hover:bg-[#FF9900] hover:text-black text-white px-3 py-1 rounded-full text-xs font-bold border border-white/15 backdrop-blur-md transition shrink-0"
+          {/* Top Sound Status Pill (Tap once to unmute all reels) */}
+          <button
+            type="button"
+            onClick={toggleGlobalSound}
+            className={`px-3 py-1 rounded-full text-xs font-black border backdrop-blur-md transition shrink-0 cursor-pointer ${
+              isUnmuted
+                ? 'bg-[#FF9900] text-black border-[#FF9900]'
+                : 'bg-black/60 text-white border-white/20 hover:border-[#FF9900]'
+            }`}
           >
-            🕒 History
-          </Link>
+            {isUnmuted ? '🔊 Sound On' : '🔇 Unmute'}
+          </button>
         </div>
 
         {/* Compact Reels Search Bar */}
-        <div ref={searchWrapRef} className="relative max-w-lg mx-auto mt-2 pointer-events-auto">
+        <div ref={searchWrapRef} className="relative max-w-md mx-auto mt-2 pointer-events-auto">
           <form onSubmit={handleSearchSubmit} className="relative flex items-center">
             <input
               type="text"
@@ -712,9 +827,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 setShowHints(val.trim().length > 0);
               }}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Search reels (refresh resets automatically)..."
+              placeholder="Search reels..."
               autoComplete="off"
-              className="w-full bg-black/75 border border-[#FF9900]/80 focus:border-[#FF9900] rounded-full pl-3.5 pr-14 py-1.5 text-xs sm:text-sm text-white placeholder-gray-400 backdrop-blur-md outline-none"
+              className="w-full bg-black/65 border border-white/20 focus:border-[#FF9900] rounded-full pl-3.5 pr-14 py-1.5 text-xs text-white placeholder-gray-300 backdrop-blur-md outline-none"
             />
             {searchInput && (
               <button
@@ -725,7 +840,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                   setShowHints(false);
                 }}
                 aria-label="Clear reel search"
-                className="absolute right-8 text-gray-400 hover:text-white px-1 text-xs cursor-pointer"
+                className="absolute right-8 text-gray-300 hover:text-white px-1 text-xs cursor-pointer"
               >
                 ✕
               </button>
@@ -768,8 +883,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
           )}
         </div>
 
-        {/* Dynamic Top Hint Pills Generated From Newly Loaded Videos */}
-        <div className="max-w-lg mx-auto mt-2 flex items-center gap-1.5 overflow-x-auto pointer-events-auto pb-0.5">
+        {/* Dynamic Top Topic Pills */}
+        <div className="max-w-md mx-auto mt-2 flex items-center gap-1.5 overflow-x-auto pointer-events-auto pb-0.5">
           {dynamicPills.map((cat) => (
             <button
               key={cat.query}
@@ -778,7 +893,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 backdrop-blur-md transition border cursor-pointer ${
                 activeCategory === cat.query
                   ? 'bg-[#FF9900] text-black border-[#FF9900]'
-                  : 'bg-black/65 text-gray-200 border-white/15 hover:border-[#FF9900]'
+                  : 'bg-black/55 text-gray-200 border-white/15 hover:border-[#FF9900]'
               }`}
             >
               {cat.label}
@@ -788,7 +903,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
       </header>
 
       {toast && (
-        <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 bg-[#FF9900] text-black text-xs font-black px-4 py-2 rounded-full shadow-xl">
+        <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 bg-[#FF9900] text-black text-xs font-black px-4 py-1.5 rounded-full shadow-xl pointer-events-none">
           {toast}
         </div>
       )}
@@ -824,14 +939,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const isActive = idx === activeIndex;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
-            const orientation = orientations[v.id] || inferInitialOrientation(v);
-            const isVertical = orientation === 'vertical';
-            const isZoomed = Boolean(zoomedIds[v.id]);
-
-            // Clean Eporner embed URL so center Play button & controls always render reliably
-            const embedUrl = isUnmuted
-              ? `https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1`
-              : `https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1&muted=1`;
+            const mp4Url = streamUrls[v.id];
+            const streamFailed = Boolean(failedStreamIds[v.id]);
 
             return (
               <section
@@ -840,82 +949,109 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 ref={(el) => {
                   itemRefs.current[idx] = el;
                 }}
-                className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden"
+                onClick={() => handleReelSurfaceTap(v)}
+                className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden cursor-pointer"
               >
-                {!isVertical && (
+                {/* Full-Bleed Vertical Reels Container (9:16 mobile & centered sleek vertical phone frame on desktop) */}
+                <div className="relative h-[100dvh] w-full sm:max-w-[430px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                  {/* Blurred Poster Backdrop when Fit Mode is 'contain' */}
                   <img
                     src={v.default_thumb.src}
                     alt=""
                     aria-hidden="true"
-                    className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-25 pointer-events-none"
+                    className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-35 pointer-events-none"
                   />
-                )}
 
-                <div
-                  className={`relative h-[100dvh] w-full ${
-                    isVertical ? 'sm:max-w-[460px]' : 'sm:max-w-[680px]'
-                  } bg-black overflow-hidden sm:border-x sm:border-white/10 flex items-center justify-center`}
-                >
-                  {/* Thumbnail Preview */}
+                  {/* Poster Image while stream buffers */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
-                    loading={idx <= 1 ? 'eager' : 'lazy'}
-                    onLoad={(e) => handleThumbLoad(v.id, e.currentTarget)}
-                    className={
-                      isVertical
-                        ? 'absolute inset-0 w-full h-full object-cover'
-                        : 'w-full aspect-video object-cover'
-                    }
+                    loading={idx <= 2 ? 'eager' : 'lazy'}
+                    className={`absolute inset-0 w-full h-full ${
+                      fitMode === 'cover' ? 'object-cover' : 'object-contain'
+                    }`}
                   />
 
-                  {/* Stable Active Player Container (never unmounts when orientation updates) */}
-                  {isActive && (
-                    <div
-                      key={`reel-player-${v.id}`}
-                      className={
-                        isVertical
-                          ? 'absolute inset-0 bg-black z-10 overflow-hidden'
-                          : 'absolute inset-x-0 top-1/2 -translate-y-1/2 z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl border-y border-white/10'
-                      }
-                    >
-                      <iframe
-                        src={embedUrl}
-                        className={`w-full h-full border-0 transition-transform duration-200 ${
-                          isVertical && isZoomed ? 'scale-[1.35] origin-center' : ''
-                        }`}
-                        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                        allowFullScreen
-                      />
+                  {/* Native HTML5 <video> Player — Instant Autoplay, Persistent Unmute, Zero Third-Party Buttons */}
+                  {mp4Url && (
+                    <video
+                      ref={(el) => {
+                        videoRefs.current[v.id] = el;
+                      }}
+                      src={mp4Url}
+                      poster={v.default_thumb.src}
+                      playsInline
+                      loop
+                      preload={Math.abs(idx - activeIndex) <= 1 ? 'auto' : 'metadata'}
+                      muted={!isUnmuted}
+                      onTimeUpdate={(e) => {
+                        if (!isActive) return;
+                        const el = e.currentTarget;
+                        if (el.duration && !Number.isNaN(el.duration)) {
+                          setProgress((el.currentTime / el.duration) * 100);
+                        }
+                      }}
+                      onError={() => {
+                        // If direct MP4 expires or fails, skip smoothly to next reel
+                        setFailedStreamIds((prev) => ({ ...prev, [v.id]: true }));
+                        if (isActive && idx + 1 < videos.length) {
+                          scrollToReel(idx + 1);
+                        }
+                      }}
+                      className={`absolute inset-0 w-full h-full z-10 ${
+                        fitMode === 'cover' ? 'object-cover' : 'object-contain'
+                      }`}
+                    />
+                  )}
 
-                      {/* Covers only bottom-center host watermark without shifting or blocking Play / Seek Bar */}
-                      <div
-                        aria-hidden="true"
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-8 min-w-[160px] sm:min-w-[190px] px-3 bg-black flex items-center justify-center gap-0.5 z-20 pointer-events-auto"
-                      >
-                        <span className="text-xs font-black text-[#FF9900]">H</span>
-                        <span className="text-xs font-black text-white">UB</span>
-                        <span className="text-xs font-black text-[#FF9900]">REELS</span>
+                  {/* Subtle Loading Spinner only while active stream URL is resolving */}
+                  {isActive && !mp4Url && !streamFailed && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 pointer-events-none">
+                      <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {/* Center Pause Indicator (Real Reels style when tapped to pause) */}
+                  {isActive && isPaused && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                      <div className="w-16 h-16 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
                       </div>
                     </div>
                   )}
 
-                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/75 to-transparent pointer-events-none z-20" />
+                  {/* Double-Tap Heart Animation */}
+                  {heartBurstId === v.id && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-ping">
+                      <svg viewBox="0 0 24 24" fill="#ef4444" className="w-24 h-24 drop-shadow-2xl">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                      </svg>
+                    </div>
+                  )}
 
-                  {/* Right-Side Action Rail */}
-                  <div className="absolute right-2.5 bottom-24 z-30 flex flex-col items-center gap-3">
-                    {/* Global Sound Unmute / Mute Toggle (Persists across all reels) */}
+                  {/* Top & Bottom Gradients for Readability */}
+                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
+                  <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-20" />
+
+                  {/* Right-Side TikTok / Instagram Reels Action Rail */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4"
+                  >
+                    {/* Persistent Unmute / Mute Button */}
                     <button
                       type="button"
-                      onClick={toggleGlobalSound}
-                      aria-label={isUnmuted ? 'Mute all reels' : 'Unmute all reels'}
+                      onClick={(e) => toggleGlobalSound(e)}
+                      aria-label={isUnmuted ? 'Mute reels' : 'Unmute reels'}
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isUnmuted
                             ? 'bg-[#FF9900] border-[#FF9900] text-black shadow-lg'
-                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
+                            : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
                         {isUnmuted ? (
@@ -937,41 +1073,18 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
-                    {isVertical && (
-                      <button
-                        type="button"
-                        onClick={() => toggleReelZoom(v.id)}
-                        aria-label="Toggle reel zoom"
-                        className="flex flex-col items-center gap-1 cursor-pointer group"
-                      >
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
-                            isZoomed
-                              ? 'bg-[#FF9900] border-[#FF9900] text-black'
-                              : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
-                          }`}
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                          </svg>
-                        </div>
-                        <span className="text-[10px] font-bold drop-shadow">
-                          {isZoomed ? 'Normal' : 'Fill 9:16'}
-                        </span>
-                      </button>
-                    )}
-
+                    {/* Like Button */}
                     <button
                       type="button"
-                      onClick={() => toggleLike(v.id)}
+                      onClick={(e) => toggleLike(e, v.id)}
                       aria-label="Like reel"
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
+                        className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition ${
                           isLiked
                             ? 'bg-red-500 border-red-400 text-white scale-110'
-                            : 'bg-black/60 border-white/20 text-white group-hover:border-[#FF9900]'
+                            : 'bg-black/55 border-white/25 text-white group-hover:border-[#FF9900]'
                         }`}
                       >
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -983,25 +1096,31 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
-                    <Link
-                      href={`/watch/${v.id}`}
-                      className="flex flex-col items-center gap-1 group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-black/60 border border-white/20 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">Watch</span>
-                    </Link>
-
+                    {/* Full-Screen Fill vs Original Aspect Toggle */}
                     <button
                       type="button"
-                      onClick={() => handleShare(v)}
+                      onClick={() => setFitMode((m) => (m === 'cover' ? 'contain' : 'cover'))}
+                      aria-label="Toggle video fit"
+                      className="flex flex-col items-center gap-1 cursor-pointer group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">
+                        {fitMode === 'cover' ? 'Full Fit' : 'Wide'}
+                      </span>
+                    </button>
+
+                    {/* Share Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleShare(e, v)}
                       aria-label="Share reel"
                       className="flex flex-col items-center gap-1 cursor-pointer group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-black/60 border border-white/20 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
                           <circle cx="18" cy="5" r="3" />
                           <circle cx="6" cy="12" r="3" />
@@ -1013,7 +1132,21 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Share</span>
                     </button>
 
-                    <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
+                    {/* Open Full Watch Page */}
+                    <Link
+                      href={`/watch/${v.id}`}
+                      className="flex flex-col items-center gap-1 group"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:bg-[#FF9900] group-hover:text-black flex items-center justify-center backdrop-blur-md transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
+                          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-bold drop-shadow">Full</span>
+                    </Link>
+
+                    {/* Desktop / Quick Up-Down Swipe Arrows */}
+                    <div className="hidden sm:flex flex-col gap-2 pt-2 border-t border-white/20">
                       <button
                         type="button"
                         onClick={() => scrollToReel(idx - 1)}
@@ -1034,16 +1167,13 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   </div>
 
-                  {/* Bottom Title & Aspect Badge */}
-                  <div className="absolute bottom-16 left-3 right-16 z-30 pointer-events-none">
+                  {/* Bottom Creator/Tag Pill + Title */}
+                  <div className="absolute bottom-7 left-3.5 right-16 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
                         {activeBadgeText}
                       </span>
-                      <span className="bg-black/75 text-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/15">
-                        {isVertical ? '📱 9:16 REEL' : '🎬 HD WIDESCREEN'}
-                      </span>
-                      <span className="bg-black/70 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
+                      <span className="bg-black/60 text-white text-[11px] font-bold px-2 py-0.5 rounded-full border border-white/15">
                         ⏱ {duration}
                       </span>
                       {v.views !== undefined && (
@@ -1056,6 +1186,23 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     <h2 className="text-white text-sm font-bold line-clamp-2 drop-shadow-md leading-snug">
                       {v.title}
                     </h2>
+                  </div>
+
+                  {/* Sleek Thin TikTok/Instagram-Style Progress Scrub Bar at Very Bottom */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
+                  >
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={isActive ? progress : 0}
+                      onChange={(e) => handleSeek(e, v.id)}
+                      aria-label="Seek reel"
+                      className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
+                    />
                   </div>
                 </div>
               </section>
