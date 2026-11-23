@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const EMBED_HEADERS = {
   'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
   Referer: 'https://www.eporner.com/',
@@ -20,6 +20,16 @@ function convertBase36Hash(hexHash: string): string {
   return out;
 }
 
+async function fetchHtml(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { headers: EMBED_HEADERS, cache: 'no-store' });
+    if (!res.ok) return '';
+    return await res.text();
+  } catch {
+    return '';
+  }
+}
+
 async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
   const now = Date.now();
   const cached = resolvedUrlCache.get(videoId);
@@ -27,16 +37,16 @@ async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
     return cached.url;
   }
 
-  try {
-    const embedRes = await fetch(
-      `https://www.eporner.com/embed/${encodeURIComponent(videoId)}/`,
-      { headers: EMBED_HEADERS, cache: 'no-store' }
-    );
-    if (!embedRes.ok) return null;
+  const urlsToTry = [
+    `https://www.eporner.com/embed/${encodeURIComponent(videoId)}/`,
+    `https://m.eporner.com/embed/${encodeURIComponent(videoId)}/`,
+  ];
 
-    const html = await embedRes.text();
+  for (const targetUrl of urlsToTry) {
+    const html = await fetchHtml(targetUrl);
+    if (!html) continue;
 
-    // 1. Check for direct MP4 URL in embed HTML
+    // 1. Direct MP4 URL in HTML
     const directMatch = html.match(/https?:\/\/[^"'\\\s<>]+\.mp4[^"'\\\s<>]*/i);
     if (directMatch?.[0]) {
       const cleanUrl = directMatch[0].replace(/&amp;/g, '&').replace(/\\\//g, '/');
@@ -44,7 +54,7 @@ async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
       return cleanUrl;
     }
 
-    // 2. Match 32-char hex hash across JS variable, object property, or JSON formats
+    // 2. Hash-based XHR MP4 lookup
     const hashMatch =
       html.match(/["']?hash["']?\s*[:=]\s*["']([a-f0-9]{32})["']/i) ||
       html.match(/([a-f0-9]{32})/i);
@@ -57,37 +67,39 @@ async function resolveEpornerMp4Url(videoId: string): Promise<string | null> {
         encodedHash
       )}&device=generic&domain=www.eporner.com&fallback=false&embed=true&supportedFormats=mp4`;
 
-      const xhrRes = await fetch(xhrUrl, {
-        headers: {
-          ...EMBED_HEADERS,
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        cache: 'no-store',
-      });
+      try {
+        const xhrRes = await fetch(xhrUrl, {
+          headers: {
+            ...EMBED_HEADERS,
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          cache: 'no-store',
+        });
 
-      if (xhrRes.ok) {
-        const json = await xhrRes.json();
-        const mp4Sources = json?.sources?.mp4;
-        if (mp4Sources && typeof mp4Sources === 'object') {
-          const order = ['480p', '360p', '720p', '240p', '1080p'];
-          for (const q of order) {
-            const src = mp4Sources[q]?.src;
-            if (typeof src === 'string' && src.startsWith('http')) {
-              resolvedUrlCache.set(videoId, { url: src, expiresAt: now + 3600_000 });
-              return src;
+        if (xhrRes.ok) {
+          const json = await xhrRes.json();
+          const mp4Sources = json?.sources?.mp4;
+          if (mp4Sources && typeof mp4Sources === 'object') {
+            const order = ['480p', '360p', '720p', '240p', '1080p'];
+            for (const q of order) {
+              const src = mp4Sources[q]?.src;
+              if (typeof src === 'string' && src.startsWith('http')) {
+                resolvedUrlCache.set(videoId, { url: src, expiresAt: now + 3600_000 });
+                return src;
+              }
             }
-          }
-          for (const entry of Object.values(mp4Sources) as Array<{ src?: string }>) {
-            if (entry?.src && entry.src.startsWith('http')) {
-              resolvedUrlCache.set(videoId, { url: entry.src, expiresAt: now + 3600_000 });
-              return entry.src;
+            for (const entry of Object.values(mp4Sources) as Array<{ src?: string }>) {
+              if (entry?.src && entry.src.startsWith('http')) {
+                resolvedUrlCache.set(videoId, { url: entry.src, expiresAt: now + 3600_000 });
+                return entry.src;
+              }
             }
           }
         }
-      }
+      } catch {}
     }
-  } catch {}
+  }
 
   return null;
 }

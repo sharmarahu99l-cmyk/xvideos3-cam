@@ -356,15 +356,13 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string>('');
 
-  // Tracks IDs where direct MP4 proxy failed so they smoothly use embed fallback without jumping/bouncing
-  const [fallbackEmbedIds, setFallbackEmbedIds] = useState<Record<string, boolean>>({});
+  // Fallback cropped vertical frame only if a specific video stream fails
+  const [croppedFallbackIds, setCroppedFallbackIds] = useState<Record<string, boolean>>({});
 
   // Persistent Sound State: once unmuted, stays unmuted across every reel until muted manually
   const [isUnmuted, setIsUnmuted] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
-  const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover');
   const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
 
   // Search bar resets empty on refresh
@@ -382,7 +380,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
   const programmaticScrollLockRef = useRef<boolean>(false);
   const lastTapRef = useRef<number>(0);
 
-  // Restore saved likes + global sound preference on mount
   useEffect(() => {
     try {
       const rawLikes = localStorage.getItem(LIKES_KEY);
@@ -405,7 +402,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Automatically play the active native <video> and pause all others (never auto-scrolls on error)
+  // Play active native <video> automatically & pause all others
   useEffect(() => {
     const currentVideo = videos[activeIndex];
     setIsPaused(false);
@@ -413,40 +410,23 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
 
     if (!currentVideo) return;
 
-    const usesFallback = Boolean(fallbackEmbedIds[currentVideo.id]);
-    setIsBuffering(!usesFallback);
-
-    // Safety timeout so loading spinner never stays stuck on screen
-    const spinnerTimeout = setTimeout(() => {
-      setIsBuffering(false);
-    }, 2200);
-
     Object.entries(videoRefs.current).forEach(([vidId, el]) => {
       if (!el) return;
-      if (vidId === currentVideo.id && !usesFallback) {
+      if (vidId === currentVideo.id) {
         el.muted = !isUnmuted;
         const playPromise = el.play();
         if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              setIsBuffering(false);
-            })
-            .catch(() => {
-              el.muted = true;
-              el.play()
-                .then(() => setIsBuffering(false))
-                .catch(() => setIsBuffering(false));
-            });
+          playPromise.catch(() => {
+            el.muted = true;
+            el.play().catch(() => {});
+          });
         }
       } else {
         el.pause();
       }
     });
+  }, [activeIndex, videos]);
 
-    return () => clearTimeout(spinnerTimeout);
-  }, [activeIndex, videos, fallbackEmbedIds]);
-
-  // Keep mute state synced whenever user toggles Sound On / Unmute
   useEffect(() => {
     const currentVideo = videos[activeIndex];
     if (!currentVideo) return;
@@ -500,7 +480,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => clearTimeout(timer);
   }, [searchInput, showHints]);
 
-  // Clean IntersectionObserver for manual swipe detection (locked during button smooth-scroll so it never bounces)
   useEffect(() => {
     const container = feedRef.current;
     if (!container || videos.length === 0) return;
@@ -530,7 +509,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     return () => observer.disconnect();
   }, [videos]);
 
-  // Infinite scroll when nearing the end of the feed
   useEffect(() => {
     if (
       videos.length > 0 &&
@@ -609,6 +587,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
     setTimeout(() => setToast(''), 1500);
   };
 
+  // Single tap toggles play/pause using our own clean center pause icon; double tap likes
   const handleReelSurfaceTap = (video: ReelVideo) => {
     const now = Date.now();
     const isDoubleTap = now - lastTapRef.current < 280;
@@ -924,7 +903,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
             const shouldMountVideo = Math.abs(idx - activeIndex) <= 1;
             const isLiked = Boolean(likedIds[v.id]);
             const duration = formatDuration(v.length_sec, v.length_min);
-            const useEmbedFallback = Boolean(fallbackEmbedIds[v.id]);
+            const useCroppedFallback = Boolean(croppedFallbackIds[v.id]);
 
             return (
               <section
@@ -933,30 +912,21 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 ref={(el) => {
                   itemRefs.current[idx] = el;
                 }}
-                onClick={() => !useEmbedFallback && handleReelSurfaceTap(v)}
+                onClick={() => handleReelSurfaceTap(v)}
                 className="relative h-[100dvh] w-full snap-start snap-always flex items-center justify-center bg-black overflow-hidden cursor-pointer"
               >
-                <div className="relative h-[100dvh] w-full sm:max-w-[430px] bg-black overflow-hidden sm:border-x sm:border-white/10 flex items-center justify-center">
-                  {/* Blurred Backdrop */}
-                  <img
-                    src={v.default_thumb.src}
-                    alt=""
-                    aria-hidden="true"
-                    className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-35 pointer-events-none"
-                  />
-
-                  {/* Poster Preview */}
+                {/* Full-Bleed Vertical 9:16 Reels Frame (Fills 100% of screen height & width on mobile, full-height 9:16 on desktop) */}
+                <div className="relative h-[100dvh] w-full sm:w-[440px] bg-black overflow-hidden sm:border-x sm:border-white/10">
+                  {/* Full-Screen Vertical Poster */}
                   <img
                     src={v.default_thumb.src}
                     alt={v.title}
                     loading={idx <= 2 ? 'eager' : 'lazy'}
-                    className={`absolute inset-0 w-full h-full ${
-                      fitMode === 'cover' ? 'object-cover' : 'object-contain'
-                    }`}
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
 
-                  {/* Primary Native HTML5 <video> Stream */}
-                  {shouldMountVideo && !useEmbedFallback && (
+                  {/* Primary Own Native HTML5 <video> Player — Full-Screen 9:16, Zero Eporner Player UI */}
+                  {shouldMountVideo && !useCroppedFallback && (
                     <video
                       ref={(el) => {
                         videoRefs.current[v.id] = el;
@@ -968,18 +938,6 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       loop
                       preload={isActive ? 'auto' : 'metadata'}
                       muted={!isUnmuted}
-                      onLoadedData={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      onCanPlay={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      onPlaying={() => {
-                        if (isActive) setIsBuffering(false);
-                      }}
-                      onWaiting={() => {
-                        if (isActive) setIsBuffering(true);
-                      }}
                       onTimeUpdate={(e) => {
                         if (!isActive) return;
                         const el = e.currentTarget;
@@ -988,40 +946,28 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         }
                       }}
                       onError={() => {
-                        // Switch only this video to clean embed fallback without bouncing or scrolling the feed
-                        setIsBuffering(false);
-                        setFallbackEmbedIds((prev) => ({ ...prev, [v.id]: true }));
+                        setCroppedFallbackIds((prev) => ({ ...prev, [v.id]: true }));
                       }}
-                      className={`absolute inset-0 w-full h-full z-10 ${
-                        fitMode === 'cover' ? 'object-cover' : 'object-contain'
-                      }`}
+                      className="absolute inset-0 w-full h-full object-cover z-10"
                     />
                   )}
 
-                  {/* Automatic Fallback Player if MP4 stream is unavailable for this video */}
-                  {isActive && useEmbedFallback && (
-                    <div className="relative z-10 w-full aspect-video bg-black overflow-hidden shadow-2xl">
+                  {/* Full-Bleed Vertical Cropped Fallback (Hides all Eporner bars, mute/unmute buttons, and borders completely) */}
+                  {isActive && useCroppedFallback && (
+                    <div className="absolute inset-0 z-10 overflow-hidden bg-black pointer-events-none">
                       <iframe
-                        key={`fallback-${v.id}-${isUnmuted ? 'u' : 'm'}`}
+                        key={`clean-vertical-${v.id}-${isUnmuted ? 'u' : 'm'}`}
                         src={`https://www.eporner.com/embed/${encodeURIComponent(v.id)}/?autoplay=1${
                           isUnmuted ? '&muted=0' : '&muted=1'
                         }`}
-                        className="w-full h-full border-0"
+                        className="w-full h-full scale-[1.95] origin-center border-0 pointer-events-none"
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                        allowFullScreen
                       />
                     </div>
                   )}
 
-                  {/* Brief Spinner only while initial stream buffers */}
-                  {isActive && isBuffering && !isPaused && !useEmbedFallback && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                      <div className="w-10 h-10 border-4 border-[#FF9900] border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
-
-                  {/* Center Pause Icon (Only when tapped to pause) */}
-                  {isActive && isPaused && !useEmbedFallback && (
+                  {/* Own Single Center Pause Icon (Only appears when user taps screen to pause) */}
+                  {isActive && isPaused && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="w-16 h-16 rounded-full bg-black/65 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
@@ -1040,15 +986,16 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   )}
 
-                  {/* Gradients */}
+                  {/* Top & Bottom Gradients */}
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none z-20" />
                   <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/90 via-black/45 to-transparent pointer-events-none z-20" />
 
-                  {/* Right-Side Reels Action Rail */}
+                  {/* Own Right-Side Reels Action Rail */}
                   <div
                     onClick={(e) => e.stopPropagation()}
                     className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4"
                   >
+                    {/* Own Persistent Unmute / Mute Toggle */}
                     <button
                       type="button"
                       onClick={(e) => toggleGlobalSound(e)}
@@ -1081,6 +1028,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
+                    {/* Like */}
                     <button
                       type="button"
                       onClick={(e) => toggleLike(e, v.id)}
@@ -1103,22 +1051,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       </span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setFitMode((m) => (m === 'cover' ? 'contain' : 'cover'))}
-                      aria-label="Toggle video fit"
-                      className="flex flex-col items-center gap-1 cursor-pointer group"
-                    >
-                      <div className="w-11 h-11 rounded-full bg-black/55 border border-white/25 group-hover:border-[#FF9900] flex items-center justify-center backdrop-blur-md transition">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-5 h-5">
-                          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                        </svg>
-                      </div>
-                      <span className="text-[10px] font-bold drop-shadow">
-                        {fitMode === 'cover' ? 'Full Fit' : 'Wide'}
-                      </span>
-                    </button>
-
+                    {/* Share */}
                     <button
                       type="button"
                       onClick={(e) => handleShare(e, v)}
@@ -1137,6 +1070,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Share</span>
                     </button>
 
+                    {/* Full Watch Page */}
                     <Link
                       href={`/watch/${v.id}`}
                       className="flex flex-col items-center gap-1 group"
@@ -1149,6 +1083,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                       <span className="text-[10px] font-bold drop-shadow">Full</span>
                     </Link>
 
+                    {/* Up / Down Navigation */}
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/20">
                       <button
                         type="button"
@@ -1170,7 +1105,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </div>
                   </div>
 
-                  {/* Bottom Title */}
+                  {/* Bottom Title & Metadata */}
                   <div className="absolute bottom-7 left-3.5 right-16 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
@@ -1191,8 +1126,8 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </h2>
                   </div>
 
-                  {/* Bottom Seek Scrub Bar (Shown for native video streams) */}
-                  {!useEmbedFallback && (
+                  {/* Own Bottom Seek Scrub Bar */}
+                  {!useCroppedFallback && (
                     <div
                       onClick={(e) => e.stopPropagation()}
                       className="absolute bottom-0 inset-x-0 z-30 px-2 pb-1.5 pt-3 flex items-center"
