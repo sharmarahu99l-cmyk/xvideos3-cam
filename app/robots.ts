@@ -9,7 +9,10 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/login', '/signup', '/history'],
       },
     ],
-    sitemap: 'https://indiansexvideo.tv/sitemap.xml',
+    sitemap: [
+      'https://indiansexvideo.tv/sitemap.xml',
+      'https://indiansexvideo.tv/video-sitemap.xml',
+    ],
     host: 'https://indiansexvideo.tv',
   };
 }
