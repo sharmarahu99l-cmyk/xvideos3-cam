@@ -13,6 +13,5 @@ export default function robots(): MetadataRoute.Robots {
       'https://indiansexvideo.tv/sitemap.xml',
       'https://indiansexvideo.tv/video-sitemap.xml',
     ],
-    host: 'https://indiansexvideo.tv',
   };
 }
