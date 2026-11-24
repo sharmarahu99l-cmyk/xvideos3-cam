@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: '18 U.S.C. § 2257 Compliance Statement | HubTube - XVideos3.cam',
-  description: '18 U.S.C. 2257 Record-Keeping Requirements Compliance Statement for XVideos3.cam.',
+  title: '18 U.S.C. § 2257 Compliance Statement | HubTube - indiansexvideo.tv',
+  description: '18 U.S.C. 2257 Record-Keeping Requirements Compliance Statement for indiansexvideo.tv.',
   alternates: { canonical: '/2257' },
 };
 
@@ -30,7 +30,7 @@ export default function Compliance2257Page() {
         </h1>
 
         <p>
-          XVideos3.cam (&ldquo;HubTube&rdquo;) is not a producer (whether primary or secondary) of any of the visual content found on this website. All visual depictions indexed on XVideos3.cam are embedded from third-party content providers and adult tube platforms.
+          indiansexvideo.tv (&ldquo;HubTube&rdquo;) is not a producer (whether primary or secondary) of any of the visual content found on this website. All visual depictions indexed on indiansexvideo.tv are embedded from third-party content providers and adult tube platforms.
         </p>
 
         <p>
@@ -38,7 +38,7 @@ export default function Compliance2257Page() {
         </p>
 
         <p>
-          For compliance inquiries or immediate link removal, contact <strong className="text-[#FF9900]">dmca@xvideos3.cam</strong>.
+          For compliance inquiries or immediate link removal, contact <strong className="text-[#FF9900]">dmca@indiansexvideo.tv</strong>.
         </p>
       </main>
     </div>

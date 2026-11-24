@@ -5,9 +5,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: 'HubTube Reels — Trending MMS & Viral Short Videos | XVideos3',
+  title: 'HubTube Reels — Trending MMS & Viral Short Videos | IndianSexVideo',
   description:
-    'Swipe through auto-updating reels, viral clips, and HD videos in full-screen vertical view on HubTube (XVideos3.cam).',
+    'Swipe through auto-updating reels, viral clips, and HD videos in full-screen vertical view on HubTube (indiansexvideo.tv).',
   alternates: { canonical: '/reels' },
 };
 

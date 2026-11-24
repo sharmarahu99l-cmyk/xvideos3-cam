@@ -69,7 +69,7 @@ export default function AgeGate() {
         </h2>
 
         <p className="text-sm text-gray-300 leading-relaxed mb-4">
-          <strong className="text-white">XVideos3.cam (HubTube)</strong> contains age-restricted adult content intended strictly for individuals who are{' '}
+          <strong className="text-white">indiansexvideo.tv (HubTube)</strong> contains age-restricted adult content intended strictly for individuals who are{' '}
           <strong className="text-[#FF9900]">18 years of age or older</strong> (or the age of majority in your jurisdiction).
         </p>
 

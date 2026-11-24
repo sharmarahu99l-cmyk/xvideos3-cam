@@ -6,9 +6,9 @@ import { resolveUniqueFixedThumbs } from '../lib/mediaThumbResolver';
 export const revalidate = 604800;
 
 export const metadata: Metadata = {
-  title: 'All Porn Categories & Desi Video Tags | HubTube - XVideos3',
+  title: 'All Porn Categories & Desi Video Tags | HubTube - IndianSexVideo',
   description:
-    'Browse all HD porn categories, Desi videos, Bhabhi, Aunty, MMS, Amateur, 4K, and VR categories on HubTube (XVideos3.cam).',
+    'Browse all HD porn categories, Desi videos, Bhabhi, Aunty, MMS, Amateur, 4K, and VR categories on HubTube (indiansexvideo.tv).',
   alternates: { canonical: '/categories' },
 };
 

@@ -35,8 +35,8 @@ export async function generateMetadata({
     const qs = new URLSearchParams({ q });
     if (page > 1) qs.set('page', String(page));
     return {
-      title: `${q} Videos${page > 1 ? ` - Page ${page}` : ''} | HubTube - XVideos3 HD`,
-      description: `Watch free HD ${q} videos and viral clips${page > 1 ? ` (Page ${page})` : ''} streaming fast on HubTube (XVideos3.cam).`,
+      title: `${q} Videos${page > 1 ? ` - Page ${page}` : ''} | HubTube - IndianSexVideo HD`,
+      description: `Watch free HD ${q} videos and viral clips${page > 1 ? ` (Page ${page})` : ''} streaming fast on HubTube (indiansexvideo.tv).`,
       alternates: { canonical: `/?${qs.toString()}` },
     };
   }
@@ -44,10 +44,10 @@ export async function generateMetadata({
   return {
     title:
       page > 1
-        ? `Trending Desi Videos, Viral MMS & HD Porn - Page ${page} | HubTube XVideos3`
-        : 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube XVideos3',
+        ? `Trending Desi Videos, Viral MMS & HD Porn - Page ${page} | HubTube IndianSexVideo`
+        : 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube IndianSexVideo',
     description:
-      'Watch latest new Desi videos, viral Desi MMS, Hindi audio bhabhi, Indian aunty, Punjabi kudi, Pakistani MMS, and 4K HD videos streaming free on HubTube (XVideos3.cam).',
+      'Watch latest new Desi videos, viral Desi MMS, Hindi audio bhabhi, Indian aunty, Punjabi kudi, Pakistani MMS, and 4K HD videos streaming free on HubTube (indiansexvideo.tv).',
     alternates: { canonical: page > 1 ? `/?page=${page}` : '/' },
   };
 }

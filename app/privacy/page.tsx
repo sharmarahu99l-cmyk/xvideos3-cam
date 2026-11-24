@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | HubTube - XVideos3.cam',
-  description: 'Privacy Policy and Cookie Disclosure for HubTube (XVideos3.cam).',
+  title: 'Privacy Policy | HubTube - indiansexvideo.tv',
+  description: 'Privacy Policy and Cookie Disclosure for HubTube (indiansexvideo.tv).',
   alternates: { canonical: '/privacy' },
 };
 
@@ -26,12 +26,12 @@ export default function PrivacyPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-10 space-y-6 text-sm leading-relaxed text-gray-300">
         <h1 className="text-3xl font-black text-[#FF9900]">Privacy Policy</h1>
-        <p className="text-xs text-gray-400">Last Updated: November 2026 • Domain: XVideos3.cam</p>
+        <p className="text-xs text-gray-400">Last Updated: November 2026 • Domain: indiansexvideo.tv</p>
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">1. Data We Collect</h2>
           <p>
-            You can browse XVideos3.cam without creating an account. Your age verification status, liked reels, and local viewing preferences are stored locally in your browser&apos;s storage (`localStorage`) and are never sold to third parties.
+            You can browse indiansexvideo.tv without creating an account. Your age verification status, liked reels, and local viewing preferences are stored locally in your browser&apos;s storage (`localStorage`) and are never sold to third parties.
           </p>
         </section>
 

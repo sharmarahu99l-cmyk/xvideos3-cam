@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service | HubTube - XVideos3.cam',
-  description: 'Terms of Service and User Agreement for HubTube (XVideos3.cam).',
+  title: 'Terms of Service | HubTube - indiansexvideo.tv',
+  description: 'Terms of Service and User Agreement for HubTube (indiansexvideo.tv).',
   alternates: { canonical: '/terms' },
 };
 
@@ -26,19 +26,19 @@ export default function TermsPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-10 space-y-6 text-sm leading-relaxed text-gray-300">
         <h1 className="text-3xl font-black text-[#FF9900]">Terms of Service</h1>
-        <p className="text-xs text-gray-400">Last Updated: November 2026 • Domain: XVideos3.cam</p>
+        <p className="text-xs text-gray-400">Last Updated: November 2026 • Domain: indiansexvideo.tv</p>
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">1. Adult Age Requirement (18+)</h2>
           <p>
-            XVideos3.cam (&ldquo;HubTube&rdquo;) is an adult-oriented search and video indexing website. By accessing or using this website, you affirm under penalty of perjury that you are at least 18 years of age (or the age of legal majority in your jurisdiction) and that viewing sexually explicit material is legal in your community.
+            indiansexvideo.tv (&ldquo;HubTube&rdquo;) is an adult-oriented search and video indexing website. By accessing or using this website, you affirm under penalty of perjury that you are at least 18 years of age (or the age of legal majority in your jurisdiction) and that viewing sexually explicit material is legal in your community.
           </p>
         </section>
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">2. Third-Party Content &amp; Embedded Streams</h2>
           <p>
-            HubTube acts solely as an automated search index and aggregator of publicly available third-party video embeds and API feeds. XVideos3.cam does not host, upload, store, or produce any video files on its servers. All videos remain hosted on their respective third-party platforms.
+            HubTube acts solely as an automated search index and aggregator of publicly available third-party video embeds and API feeds. indiansexvideo.tv does not host, upload, store, or produce any video files on its servers. All videos remain hosted on their respective third-party platforms.
           </p>
         </section>
 

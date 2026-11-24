@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const host = 'xvideos3.cam';
+  const host = 'indiansexvideo.tv';
   const sitemapIndexUrl = `https://${host}/sitemap-index.xml`;
 
   const indexNowPayload = {

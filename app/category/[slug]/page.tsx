@@ -68,7 +68,7 @@ export default async function CategorySlugPage({
         <section className="max-w-7xl mx-auto px-4 pb-10">
           <div className="bg-[#111] border border-gray-800 rounded-2xl p-6 space-y-3 text-xs sm:text-sm text-gray-400 leading-relaxed">
             <h2 className="text-base sm:text-lg font-black text-[#FF9900]">
-              About {seo.displayTitle} on HubTube (XVideos3.cam)
+              About {seo.displayTitle} on HubTube (indiansexvideo.tv)
             </h2>
             {seo.articleParagraphs.map((para, i) => (
               <p key={i}>{para}</p>

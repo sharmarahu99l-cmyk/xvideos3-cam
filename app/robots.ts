@@ -2,11 +2,14 @@ import type { MetadataRoute } from 'next';
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: {
-      userAgent: '*',
-      allow: ['/', '/api/feed.xml', '/api/sitemap-chunk/'],
-      disallow: ['/history', '/login', '/signup', '/api/search', '/api/suggest', '/api/video/', '/api/thumb'],
-    },
-    sitemap: 'https://xvideos3.cam/sitemap-index.xml',
+    rules: [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: ['/api/', '/login', '/signup', '/history'],
+      },
+    ],
+    sitemap: 'https://indiansexvideo.tv/sitemap.xml',
+    host: 'https://indiansexvideo.tv',
   };
 }

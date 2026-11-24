@@ -210,7 +210,7 @@ export default function WatchClient({
       if (v) {
         setVideo(v);
         if (v.title) {
-          document.title = `${v.title} | HubTube - XVideos3 HD`;
+          document.title = `${v.title} | HubTube - IndianSexVideo HD`;
         }
         recordWatchedVideo(v as any);
       }
@@ -517,7 +517,7 @@ export default function WatchClient({
 
           <h2 className="text-[#FF9900] text-lg font-bold mb-2">Video Description</h2>
           <p className="text-gray-300 leading-relaxed">
-            Watch {video?.title || 'this full HD video'} on HubTube (XVideos3.cam).<br />
+            Watch {video?.title || 'this full HD video'} on HubTube (indiansexvideo.tv).<br />
             Free HD porn video streaming with fast HubTube quality, viral Desi MMS, and top pornstars.
           </p>
 
@@ -648,7 +648,7 @@ export default function WatchClient({
             Popular Desi Videos, Viral MMS &amp; HD Categories
           </h2>
           <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-            HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
+            HubTube (indiansexvideo.tv) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
           </p>
           <div className="flex flex-wrap gap-2 mb-8">
             {SEO_DESI_HUB_LINKS.map((term) => (
@@ -682,7 +682,7 @@ export default function WatchClient({
               </Link>
             </div>
             <p className="text-gray-500">
-              © {new Date().getFullYear()} XVideos3.cam (HubTube) • 18+ Adults Only • RTA-5042-1996-1400-1577-RTA
+              © {new Date().getFullYear()} indiansexvideo.tv (HubTube) • 18+ Adults Only • RTA-5042-1996-1400-1577-RTA
             </p>
           </div>
         </footer>

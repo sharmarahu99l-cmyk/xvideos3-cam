@@ -42,7 +42,7 @@ export async function GET() {
 
   const itemsXml = allVideos
     .map((v) => {
-      const watchUrl = `https://xvideos3.cam/watch/${encodeURIComponent(v.id)}`;
+      const watchUrl = `https://indiansexvideo.tv/watch/${encodeURIComponent(v.id)}`;
       const title = escapeXml(v.title);
       const thumb = escapeXml(v.default_thumb.src);
       const duration = Number(v.length_sec) || 0;
@@ -64,8 +64,8 @@ export async function GET() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
-    <title>HubTube - XVideos3.cam</title>
-    <link>https://xvideos3.cam</link>
+    <title>HubTube - indiansexvideo.tv</title>
+    <link>https://indiansexvideo.tv</link>
     <description>Latest Desi videos, MMS, and HD streams on HubTube</description>
     ${itemsXml}
   </channel>

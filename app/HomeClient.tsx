@@ -373,12 +373,12 @@ export default function HomeClient({
       if (urlQuery.trim()) {
         trackUserInterest([urlQuery.trim()]);
         if (!isSubListingRoute) {
-          document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - XVideos3 HD`;
+          document.title = `${urlQuery} Videos (Page ${urlPage}) | HubTube - IndianSexVideo HD`;
         }
       } else if (urlPage > 1 && !isSubListingRoute) {
-        document.title = `Trending Desi Videos, Viral MMS & HD Porn - Page ${urlPage} | HubTube XVideos3`;
+        document.title = `Trending Desi Videos, Viral MMS & HD Porn - Page ${urlPage} | HubTube IndianSexVideo`;
       } else if (!isSubListingRoute) {
-        document.title = 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube XVideos3';
+        document.title = 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube IndianSexVideo';
       }
 
       const history = getWatchHistory(5).filter(validThumb);
@@ -954,7 +954,7 @@ export default function HomeClient({
             Popular Desi Videos, Viral MMS &amp; HD Categories
           </h2>
           <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-            HubTube (XVideos3.cam) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
+            HubTube (indiansexvideo.tv) indexes thousands of new Desi videos, viral Desi MMS, Indian bhabhi, aunty, Pakistani MMS, and 4K 60fps videos updated every hour.
           </p>
           <div className="flex flex-wrap gap-2 mb-8">
             {SEO_DESI_HUB_LINKS.map((term) => (
@@ -988,7 +988,7 @@ export default function HomeClient({
               </Link>
             </div>
             <p className="text-gray-500">
-              © {new Date().getFullYear()} XVideos3.cam (HubTube) • 18+ Adults Only • RTA-5042-1996-1400-1577-RTA
+              © {new Date().getFullYear()} indiansexvideo.tv (HubTube) • 18+ Adults Only • RTA-5042-1996-1400-1577-RTA
             </p>
           </div>
         </footer>

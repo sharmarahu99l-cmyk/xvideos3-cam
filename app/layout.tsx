@@ -3,10 +3,10 @@ import AgeGate from './AgeGate';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://xvideos3.cam'),
-  title: 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube XVideos3',
+  metadataBase: new URL('https://indiansexvideo.tv'),
+  title: 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube IndianSexVideo',
   description:
-    'Watch latest new Desi videos, viral Desi MMS, Hindi audio bhabhi, Indian aunty, Punjabi kudi, Pakistani MMS, and 4K HD videos streaming free on HubTube (XVideos3.cam).',
+    'Watch latest new Desi videos, viral Desi MMS, Hindi audio bhabhi, Indian aunty, Punjabi kudi, Pakistani MMS, and 4K HD videos streaming free on HubTube (indiansexvideo.tv).',
   other: {
     RATING: 'RTA-5042-1996-1400-1577-RTA',
     rating: 'adult',

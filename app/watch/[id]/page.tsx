@@ -34,11 +34,11 @@ export async function generateMetadata({
   const { id } = await params;
   const video = await getVideoById(id);
   const title = video?.title
-    ? `${video.title} | HubTube - XVideos3 HD`
-    : 'Watch Free HD Video | HubTube - XVideos3';
+    ? `${video.title} | HubTube - IndianSexVideo HD`
+    : 'Watch Free HD Video | HubTube - IndianSexVideo';
   return {
     title,
-    description: `Stream ${video?.title || 'HD Desi and viral videos'} free on HubTube (XVideos3.cam).`,
+    description: `Stream ${video?.title || 'HD Desi and viral videos'} free on HubTube (indiansexvideo.tv).`,
     alternates: { canonical: `/watch/${encodeURIComponent(id)}` },
   };
 }
@@ -56,7 +56,7 @@ export default async function WatchPage({
         '@context': 'https://schema.org',
         '@type': 'VideoObject',
         name: initialVideo.title,
-        description: `Watch ${initialVideo.title} in free HD on HubTube (XVideos3.cam).`,
+        description: `Watch ${initialVideo.title} in free HD on HubTube (indiansexvideo.tv).`,
         thumbnailUrl: initialVideo.default_thumb?.src
           ? [initialVideo.default_thumb.src]
           : undefined,
@@ -65,7 +65,7 @@ export default async function WatchPage({
           : '2026-01-01T00:00:00Z',
         duration: toIsoDuration(initialVideo.length_sec),
         embedUrl: `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
-        contentUrl: `https://xvideos3.cam/watch/${encodeURIComponent(id)}`,
+        contentUrl: `https://indiansexvideo.tv/watch/${encodeURIComponent(id)}`,
         interactionStatistic: {
           '@type': 'InteractionCounter',
           interactionType: { '@type': 'WatchAction' },

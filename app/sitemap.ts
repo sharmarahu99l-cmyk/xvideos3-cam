@@ -1,33 +1,80 @@
 import type { MetadataRoute } from 'next';
-import { ALL_SITEMAP_CATEGORIES, ALL_PORNSTARS, toCategorySlug, toPornstarSlug } from './lib/seoData';
+import {
+  ALL_CATEGORIES,
+  ALL_PORNSTARS,
+  toCategorySlug,
+  toPornstarSlug,
+} from './lib/seoData';
 
-export const revalidate = 86400;
+const BASE_URL = 'https://indiansexvideo.tv';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = 'https://xvideos3.cam';
+  const now = new Date();
 
-  const corePages: MetadataRoute.Sitemap = [
-    { url: `${base}/`, changeFrequency: 'hourly', priority: 1 },
-    { url: `${base}/reels`, changeFrequency: 'hourly', priority: 0.95 },
-    { url: `${base}/categories`, changeFrequency: 'daily', priority: 0.85 },
-    { url: `${base}/pornstars`, changeFrequency: 'daily', priority: 0.85 },
-    { url: `${base}/terms`, changeFrequency: 'monthly', priority: 0.3 },
-    { url: `${base}/privacy`, changeFrequency: 'monthly', priority: 0.3 },
-    { url: `${base}/dmca`, changeFrequency: 'monthly', priority: 0.3 },
-    { url: `${base}/2257`, changeFrequency: 'monthly', priority: 0.3 },
+  const staticRoutes: MetadataRoute.Sitemap = [
+    {
+      url: `${BASE_URL}/`,
+      lastModified: now,
+      changeFrequency: 'hourly',
+      priority: 1.0,
+    },
+    {
+      url: `${BASE_URL}/reels`,
+      lastModified: now,
+      changeFrequency: 'hourly',
+      priority: 0.95,
+    },
+    {
+      url: `${BASE_URL}/categories`,
+      lastModified: now,
+      changeFrequency: 'daily',
+      priority: 0.9,
+    },
+    {
+      url: `${BASE_URL}/pornstars`,
+      lastModified: now,
+      changeFrequency: 'daily',
+      priority: 0.9,
+    },
+    {
+      url: `${BASE_URL}/terms`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
+    {
+      url: `${BASE_URL}/privacy`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
+    {
+      url: `${BASE_URL}/dmca`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
+    {
+      url: `${BASE_URL}/2257`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
   ];
 
-  const categoryPages: MetadataRoute.Sitemap = ALL_SITEMAP_CATEGORIES.map((cat) => ({
-    url: `${base}/category/${toCategorySlug(cat)}`,
+  const categoryRoutes: MetadataRoute.Sitemap = ALL_CATEGORIES.map((cat) => ({
+    url: `${BASE_URL}/category/${toCategorySlug(cat)}`,
+    lastModified: now,
+    changeFrequency: 'daily',
+    priority: 0.85,
+  }));
+
+  const pornstarRoutes: MetadataRoute.Sitemap = ALL_PORNSTARS.map((star) => ({
+    url: `${BASE_URL}/pornstar/${toPornstarSlug(star)}`,
+    lastModified: now,
     changeFrequency: 'daily',
     priority: 0.8,
   }));
 
-  const pornstarPages: MetadataRoute.Sitemap = ALL_PORNSTARS.map((star) => ({
-    url: `${base}/pornstar/${toPornstarSlug(star)}`,
-    changeFrequency: 'daily',
-    priority: 0.8,
-  }));
-
-  return [...corePages, ...categoryPages, ...pornstarPages];
+  return [...staticRoutes, ...categoryRoutes, ...pornstarRoutes];
 }

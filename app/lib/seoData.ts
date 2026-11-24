@@ -115,12 +115,12 @@ export function buildCategorySeoCopy(
     .join(' ');
 
   const pageSuffix = page > 1 ? ` (Page ${page})` : '';
-  const metaTitle = `${displayTitle}${pageSuffix} — Free HD ${displayTitle} & Viral Clips | HubTube XVideos3`;
-  const metaDescription = `Watch the newest ${displayTitle}${pageSuffix} in full HD 1080p and 4K on HubTube (XVideos3.cam). Updated hourly with trending ${displayTitle}, viral clips, and fast mobile streaming.`;
+  const metaTitle = `${displayTitle}${pageSuffix} — Free HD ${displayTitle} & Viral Clips | HubTube IndianSexVideo`;
+  const metaDescription = `Watch the newest ${displayTitle}${pageSuffix} in full HD 1080p and 4K on HubTube (indiansexvideo.tv). Updated hourly with trending ${displayTitle}, viral clips, and fast mobile streaming.`;
 
   const articleParagraphs = [
-    `Welcome to the dedicated ${displayTitle} hub on HubTube (XVideos3.cam), updated automatically every hour with the highest-rated and most-watched ${displayTitle}. Whether you are browsing on mobile or desktop, our fast-loading player delivers smooth HD 1080p and 4K playback without forced registration walls.`,
-    `Explore thousands of hand-indexed ${displayTitle} uploads sorted by popularity, weekly trending views, and latest releases. You can also swipe through vertical short clips in HubReels or discover related niches across our category directory. All content indexed on XVideos3.cam complies with RTA adult labeling and 18 U.S.C. § 2257 requirements.`,
+    `Welcome to the dedicated ${displayTitle} hub on HubTube (indiansexvideo.tv), updated automatically every hour with the highest-rated and most-watched ${displayTitle}. Whether you are browsing on mobile or desktop, our fast-loading player delivers smooth HD 1080p and 4K playback without forced registration walls.`,
+    `Explore thousands of hand-indexed ${displayTitle} uploads sorted by popularity, weekly trending views, and latest releases. You can also swipe through vertical short clips in HubReels or discover related niches across our category directory. All content indexed on indiansexvideo.tv complies with RTA adult labeling and 18 U.S.C. § 2257 requirements.`,
   ];
 
   return { displayTitle, metaTitle, metaDescription, articleParagraphs };
@@ -142,12 +142,12 @@ export function buildPornstarSeoCopy(
     .join(' ');
 
   const pageSuffix = page > 1 ? ` (Page ${page})` : '';
-  const metaTitle = `${displayName} Porn Videos${pageSuffix} — Free HD & 4K Scenes | HubTube XVideos3`;
-  const metaDescription = `Stream full HD and 4K ${displayName} porn videos${pageSuffix} free on HubTube (XVideos3.cam). Browse ${displayName}'s most-watched scenes, solo clips, and latest releases.`;
+  const metaTitle = `${displayName} Porn Videos${pageSuffix} — Free HD & 4K Scenes | HubTube IndianSexVideo`;
+  const metaDescription = `Stream full HD and 4K ${displayName} porn videos${pageSuffix} free on HubTube (indiansexvideo.tv). Browse ${displayName}'s most-watched scenes, solo clips, and latest releases.`;
 
   const articleParagraphs = [
-    `Watch the complete collection of ${displayName} HD and 4K scenes on HubTube (XVideos3.cam). Our index automatically aggregates ${displayName}'s highest-rated full-length releases, trending clips, and latest uploads in 1080p and 60fps.`,
-    `Browse every page of ${displayName} videos without registration walls or slow popups, or jump into HubReels for instant vertical previews. All streams indexed on XVideos3.cam are RTA-labeled and 18 U.S.C. § 2257 compliant.`,
+    `Watch the complete collection of ${displayName} HD and 4K scenes on HubTube (indiansexvideo.tv). Our index automatically aggregates ${displayName}'s highest-rated full-length releases, trending clips, and latest uploads in 1080p and 60fps.`,
+    `Browse every page of ${displayName} videos without registration walls or slow popups, or jump into HubReels for instant vertical previews. All streams indexed on indiansexvideo.tv are RTA-labeled and 18 U.S.C. § 2257 compliant.`,
   ];
 
   return { displayName, metaTitle, metaDescription, articleParagraphs };

@@ -29,7 +29,7 @@ export async function GET(
           .filter((v: { id?: string }) => v?.id)
           .map(
             (v: { id: string }) =>
-              `<url><loc>https://xvideos3.cam/watch/${encodeURIComponent(v.id)}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>`
+              `<url><loc>https://indiansexvideo.tv/watch/${encodeURIComponent(v.id)}</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>`
           )
           .join('');
       }
