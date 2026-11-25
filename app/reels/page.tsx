@@ -1,15 +1,10 @@
+import ReelsSeoBlock from "../../components/ReelsSeoBlock";
 import type { Metadata } from 'next';
 import ReelsClient, { type ReelVideo } from './ReelsClient';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export const metadata: Metadata = {
-  title: 'HubTube Reels — Trending MMS & Viral Short Videos | IndianSexVideo',
-  description:
-    'Swipe through auto-updating reels, viral clips, and HD videos in full-screen vertical view on HubTube (indiansexvideo.tv).',
-  alternates: { canonical: '/reels' },
-};
 
 const TOPIC_POOL = [
   'mms', 'leaked mms', 'desi mms', 'desi bhabhi', 'viral', 'indian homemade',
