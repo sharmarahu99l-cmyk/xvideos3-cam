@@ -26,18 +26,17 @@ function escapeXml(str: string): string {
 
 async function fetchBatch(query: string, page: number) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const url = `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
       query
     )}&per_page=50&page=${page}&order=most-popular&lq=0&thumbsize=big&format=json`;
-
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
         Accept: 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       },
       cache: 'no-store',
     });
@@ -55,7 +54,6 @@ export async function GET() {
   const seen = new Set<string>();
   const items: string[] = [];
 
-  // Fetch in 2 small waves so Eporner never rate-limits Vercel's IP
   const wave1 = await Promise.all(
     QUERIES.slice(0, 4).map((item) => fetchBatch(item.q, item.page))
   );
@@ -73,6 +71,9 @@ export async function GET() {
 
       const duration = Math.max(15, Math.min(28000, Number(v?.length_sec) || 180));
       const pageUrl = `${BASE_URL}/watch/${encodeURIComponent(id)}`;
+      const playerUrl = `https://www.eporner.com/embed/${encodeURIComponent(id)}/`;
+      if (pageUrl === playerUrl) continue;
+
       const cleanDesc = `Watch ${title} free in HD on IndianSexVideo.tv`.slice(0, 200);
 
       items.push(`  <url>
@@ -81,9 +82,7 @@ export async function GET() {
       <video:thumbnail_loc>${escapeXml(thumb)}</video:thumbnail_loc>
       <video:title>${escapeXml(title.slice(0, 100))}</video:title>
       <video:description>${escapeXml(cleanDesc)}</video:description>
-      <video:player_loc allow_embed="yes">${escapeXml(
-        `https://www.eporner.com/embed/${encodeURIComponent(id)}/`
-      )}</video:player_loc>
+      <video:player_loc allow_embed="yes">${escapeXml(playerUrl)}</video:player_loc>
       <video:duration>${duration}</video:duration>
       <video:family_friendly>no</video:family_friendly>
     </video:video>
@@ -91,16 +90,15 @@ export async function GET() {
     }
   }
 
-  // Fallback entry so <urlset> is never empty if upstream API temporarily hiccups
   if (items.length === 0) {
     items.push(`  <url>
-    <loc>${BASE_URL}/reels</loc>
+    <loc>${BASE_URL}/watch/Is23421</loc>
     <video:video>
       <video:thumbnail_loc>${BASE_URL}/icon.png</video:thumbnail_loc>
       <video:title>Trending Indian &amp; Desi HD Videos on IndianSexVideo.tv</video:title>
-      <video:description>Watch latest trending Desi videos and HD clips on IndianSexVideo.tv</video:description>
-      <video:player_loc allow_embed="yes">${BASE_URL}/reels</video:player_loc>
-      <video:duration>60</video:duration>
+      <video:description>Watch latest trending Desi videos and HD clips free on IndianSexVideo.tv</video:description>
+      <video:player_loc allow_embed="yes">https://www.eporner.com/embed/Is23421/</video:player_loc>
+      <video:duration>180</video:duration>
       <video:family_friendly>no</video:family_friendly>
     </video:video>
   </url>`);
