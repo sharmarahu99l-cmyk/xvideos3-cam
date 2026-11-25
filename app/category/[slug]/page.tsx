@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from 'next';
 import HomeClient from '../../HomeClient';
 import { StoredVideo } from '../../lib/userPrefs';
@@ -67,6 +68,11 @@ export default async function CategorySlugPage({
       {page === 1 && (
         <section className="max-w-7xl mx-auto px-4 pb-10">
           <div className="bg-[#111] border border-gray-800 rounded-2xl p-6 space-y-3 text-xs sm:text-sm text-gray-400 leading-relaxed">
+      <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-500/30 bg-zinc-900/80 px-4 py-2.5 text-xs sm:text-sm">
+        <span className="text-zinc-300">Prefer vertical 9:16 mobile clips?</span>
+        <Link href="/reels" className="font-bold text-amber-400 hover:underline">Watch Desi Sex Reels HD →</Link>
+      </div>
+
             <h2 className="text-base sm:text-lg font-black text-[#FF9900]">
               About {seo.displayTitle} on HubTube (indiansexvideo.tv)
             </h2>
