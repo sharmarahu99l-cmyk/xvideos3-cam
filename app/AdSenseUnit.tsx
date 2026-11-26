@@ -10,9 +10,13 @@ declare global {
 
 export default function AdSenseUnit({
   slot = '1225474723',
+  layout,
+  format = 'auto',
   className = '',
 }: {
   slot?: string;
+  layout?: 'in-article';
+  format?: 'auto' | 'fluid';
   className?: string;
 }) {
   const pushedRef = useRef(false);
@@ -23,17 +27,20 @@ export default function AdSenseUnit({
     try {
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch {}
-  }, [slot]);
+  }, [slot, layout, format]);
+
+  const isInArticle = layout === 'in-article' || format === 'fluid';
 
   return (
-    <div className={`my-4 w-full overflow-hidden text-center ${className}`}>
+    <div className={`my-5 w-full overflow-hidden text-center ${className}`}>
       <ins
         className="adsbygoogle"
-        style={{ display: 'block' }}
+        style={isInArticle ? { display: 'block', textAlign: 'center' } : { display: 'block' }}
         data-ad-client="ca-pub-2014909859491780"
         data-ad-slot={slot}
-        data-ad-format="auto"
-        data-full-width-responsive="true"
+        {...(layout ? { 'data-ad-layout': layout } : {})}
+        data-ad-format={format}
+        {...(!isInArticle ? { 'data-full-width-responsive': 'true' } : {})}
       />
     </div>
   );

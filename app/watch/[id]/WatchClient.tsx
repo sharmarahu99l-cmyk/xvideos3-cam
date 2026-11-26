@@ -523,6 +523,8 @@ export default function WatchClient({
             Free HD porn video streaming with fast HubTube quality, viral Desi MMS, and top pornstars.
           </p>
 
+          <AdSenseUnit slot="1736997659" layout="in-article" format="fluid" />
+
           {tagList.length > 0 && (
             <div className="mt-5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
