@@ -1,4 +1,3 @@
-import AdSenseUnit from '../AdSenseUnit';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -34,9 +33,7 @@ export default function TermsPage() {
           <p>
             indiansexvideo.tv (&ldquo;HubTube&rdquo;) is an adult-oriented search and video indexing website. By accessing or using this website, you affirm under penalty of perjury that you are at least 18 years of age (or the age of legal majority in your jurisdiction) and that viewing sexually explicit material is legal in your community.
           </p>
-      <AdSenseUnit slot="1736997659" layout="in-article" format="fluid" />
-
-        </section>
+</section>
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">2. Third-Party Content &amp; Embedded Streams</h2>

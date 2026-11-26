@@ -1,4 +1,3 @@
-import AdSenseUnit from '../AdSenseUnit';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -34,9 +33,7 @@ export default function PrivacyPage() {
           <p>
             You can browse indiansexvideo.tv without creating an account. Your age verification status, liked reels, and local viewing preferences are stored locally in your browser&apos;s storage (`localStorage`) and are never sold to third parties.
           </p>
-      <AdSenseUnit slot="1736997659" layout="in-article" format="fluid" />
-
-        </section>
+</section>
 
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">2. Optional Registered Accounts</h2>

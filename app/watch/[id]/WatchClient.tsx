@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from '../../VideoCard';
 import JuicyBanner from '../../JuicyBanner';
-import AdSenseUnit from '../../AdSenseUnit';
 import HubTubePlayer from './HubTubePlayer';
 import {
   recordWatchedVideo,
@@ -503,9 +502,7 @@ export default function WatchClient({
         />
 
         <JuicyBanner />
-        <AdSenseUnit slot="1225474723" />
-
-        <div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
+<div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
           <h1 className="text-white text-2xl md:text-3xl font-black mb-2 leading-snug">
             {video?.title || 'HD Desi & Viral Video Stream'}
           </h1>
@@ -522,10 +519,7 @@ export default function WatchClient({
             Watch {video?.title || 'this full HD video'} on HubTube (indiansexvideo.tv).<br />
             Free HD porn video streaming with fast HubTube quality, viral Desi MMS, and top pornstars.
           </p>
-
-          <AdSenseUnit slot="1736997659" layout="in-article" format="fluid" />
-
-          {tagList.length > 0 && (
+{tagList.length > 0 && (
             <div className="mt-5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
                 Video Tags

@@ -1,4 +1,3 @@
-import AdSenseUnit from '../AdSenseUnit';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -37,10 +36,7 @@ export default function Compliance2257Page() {
         <p>
           Pursuant to 18 U.S.C. § 2257 and 28 C.F.R. Part 75, the records required to be maintained for all visual depictions are kept by the respective third-party primary or secondary producers and hosting platforms from which the embeds originate.
         </p>
-      <AdSenseUnit slot="1736997659" layout="in-article" format="fluid" />
-
-
-        <p>
+<p>
           For compliance inquiries or immediate link removal, contact <strong className="text-[#FF9900]">dmca@indiansexvideo.tv</strong>.
         </p>
       </main>

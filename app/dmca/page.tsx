@@ -1,4 +1,3 @@
-import AdSenseUnit from '../AdSenseUnit';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -40,9 +39,7 @@ export default function DmcaPage() {
           <p>
             If you are a copyright owner, performer, or authorized representative and wish to have a specific URL blocked from indiansexvideo.tv, please send a notice containing:
           </p>
-      <AdSenseUnit slot="1736997659" layout="in-article" format="fluid" />
-
-          <ul className="list-disc pl-6 space-y-1">
+<ul className="list-disc pl-6 space-y-1">
             <li>The exact URL(s) on `https://indiansexvideo.tv/watch/...` you want removed.</li>
             <li>Proof of copyright ownership or performer identification.</li>
             <li>Your contact email and a statement of good-faith belief.</li>
