@@ -9,11 +9,13 @@ export const revalidate = 0;
 async function getInitialVideos(query: string, page: number): Promise<StoredVideo[]> {
   const searchTerm = query.trim();
 
+  // Default homepage: 100% Easy-keyword + xHamster + Eporner feed rotated every 1 hour
   if (!searchTerm) {
     const feed = await getHourlyKeywordFeed('main', page, 30, 'latest');
     return feed as unknown as StoredVideo[];
   }
 
+  // Real-time uncached search across Eporner + xHamster exact top results
   const results = await searchUnifiedVideos(searchTerm, page, 30, 'latest');
   return results as unknown as StoredVideo[];
 }

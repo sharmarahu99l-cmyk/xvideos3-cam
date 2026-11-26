@@ -264,6 +264,11 @@ async function fetchXHamsterLive(
   }
 }
 
+/**
+ * Real-time, uncached, exact 1:1 mirror of Eporner + xHamster top results for ANY search query.
+ * Passes the exact page number directly to both engines (supporting up to 100,000 results)
+ * with zero caching delay, placing #1 xHamster, #1 Eporner, #2 xHamster, #2 Eporner at the top.
+ */
 export async function searchUnifiedVideos(
   query: string,
   page = 1,
@@ -274,11 +279,13 @@ export async function searchUnifiedVideos(
   const safePage = Math.max(1, page);
   const epOrder = order === 'most_viewed' ? 'most-popular' : order || 'latest';
 
+  // Fetch exact page from both Eporner and xHamster simultaneously with zero cache
   const [epResults, xhResults] = await Promise.all([
     fetchEpornerLive(cleanQuery, safePage, epOrder, perPage, false),
     fetchXHamsterLive(cleanQuery, safePage, false),
   ]);
 
+  // Strict 1:1 interleaving of top results from both sites (#1 xHamster, #1 Eporner, #2 xHamster, #2 Eporner...)
   const interleaved: UnifiedVideo[] = [];
   const maxLen = Math.max(xhResults.length, epResults.length);
   for (let i = 0; i < maxLen; i++) {
@@ -286,6 +293,7 @@ export async function searchUnifiedVideos(
     if (epResults[i]) interleaved.push(epResults[i]);
   }
 
+  // Only pad from local 60,511-video catalog if both live APIs returned fewer than perPage items
   if (interleaved.length < perPage) {
     const tokens = cleanQuery
       .toLowerCase()
@@ -325,6 +333,10 @@ export async function searchUnifiedVideos(
   return deduped.slice(0, perPage);
 }
 
+/**
+ * Floods 'main' (Homepage) and 'reels' (/reels) with strictly keyword-matched,
+ * non-repeating videos from Eporner + xHamster + local catalog, rotated every 1 hour.
+ */
 export async function getHourlyKeywordFeed(
   feedType: 'main' | 'reels',
   page = 1,
