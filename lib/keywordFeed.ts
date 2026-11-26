@@ -1,4 +1,5 @@
 import crawlIndex from '../data/crawl-index.json';
+import manualVideos from '../data/manual-videos.json';
 
 export interface UnifiedVideo {
   id: string;
@@ -14,6 +15,16 @@ export interface UnifiedVideo {
 }
 
 type RawCrawlItem = { id: string; t: string; i?: string; d?: string; v?: string };
+type ManualVideoEntry = {
+  id: string;
+  title: string;
+  thumb: string;
+  embed: string;
+  duration?: string;
+  views?: string;
+  keywords?: string;
+  categories?: string[];
+};
 
 const TARGET_KEYWORDS = [
   'indian',
@@ -54,15 +65,45 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return copy;
 }
 
-async function fetchEpornerByKeyword(query: string, page: number, order = 'latest'): Promise<UnifiedVideo[]> {
+export function getPinnedVideos(categorySlug?: string): UnifiedVideo[] {
+  const list = (Array.isArray(manualVideos) ? manualVideos : []) as ManualVideoEntry[];
+  return list
+    .filter((m) => m && m.id && m.title && m.thumb && m.embed)
+    .filter((m) => {
+      if (!categorySlug) return true;
+      const slug = categorySlug.toLowerCase().trim();
+      const cats = (m.categories || []).map((c) => c.toLowerCase().trim());
+      const kws = (m.keywords || '').toLowerCase();
+      return cats.includes(slug) || kws.includes(slug.replace(/-/g, ' '));
+    })
+    .map((m) => ({
+      id: m.id,
+      title: m.title,
+      default_thumb: { src: m.thumb },
+      length_min: m.duration || '06:30',
+      views: m.views || '25.4K',
+      keywords: m.keywords || 'desi mms, viral desi',
+      embed: m.embed,
+      url: `/watch/${m.id}`,
+      rate: '4.9',
+    }));
+}
+
+async function fetchEpornerLive(
+  query: string,
+  page: number,
+  order = 'latest',
+  perPage = 30,
+  strictKeywords = false
+): Promise<UnifiedVideo[]> {
   try {
     const url = `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
       query
-    )}&per_page=24&page=${page}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`;
+    )}&per_page=${perPage}&page=${page}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`;
 
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(3000),
-      next: { revalidate: 3600 },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36',
         Accept: 'application/json',
@@ -78,7 +119,8 @@ async function fetchEpornerByKeyword(query: string, page: number, order = 'lates
         const title = String(v?.title || '').trim();
         const thumbObj = v?.default_thumb as { src?: string } | undefined;
         const thumb = String(thumbObj?.src || '').trim();
-        if (!id || !title || !thumb.startsWith('http') || !matchesTargetKeywords(title)) return null;
+        if (!id || !title || !thumb.startsWith('http')) return null;
+        if (strictKeywords && !matchesTargetKeywords(title)) return null;
 
         return {
           id,
@@ -99,61 +141,190 @@ async function fetchEpornerByKeyword(query: string, page: number, order = 'lates
   }
 }
 
-async function fetchXHamsterByKeyword(query: string, page: number): Promise<UnifiedVideo[]> {
+function extractBalancedJson(source: string, startIdx: number): string | null {
+  let depth = 0;
+  let inStr = false;
+  let escaped = false;
+  for (let i = startIdx; i < source.length; i++) {
+    const ch = source[i];
+    if (inStr) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return source.slice(startIdx, i + 1);
+    }
+  }
+  return null;
+}
+
+function normalizeXHamsterItems(
+  items: unknown[],
+  query: string,
+  strictKeywords: boolean
+): UnifiedVideo[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((raw): UnifiedVideo | null => {
+      const item = raw as Record<string, unknown>;
+      if (!item || typeof item !== 'object') return null;
+      const pageUrl = String(item.pageURL || item.url || '');
+      const idMatch = pageUrl.match(/-([a-zA-Z0-9]+)(?:\/|$|\?)/);
+      const rawId = String(item.id || (idMatch ? idMatch[1] : '') || '');
+      const title = String(item.title || item.name || '').trim();
+      const thumb = String(item.thumbURL || item.thumb || item.image || item.spriteURL || '');
+      if (!rawId || !title || !thumb.startsWith('http')) return null;
+      if (strictKeywords && !matchesTargetKeywords(title)) return null;
+
+      const cleanId = rawId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-24);
+      if (!cleanId) return null;
+
+      const durSec = Number(item.duration);
+      const formattedDur =
+        !Number.isNaN(durSec) && durSec > 0
+          ? `${Math.floor(durSec / 60)}:${String(durSec % 60).padStart(2, '0')}`
+          : typeof item.duration === 'string'
+          ? item.duration
+          : '06:15';
+
+      return {
+        id: `xh-${cleanId}`,
+        title,
+        default_thumb: { src: thumb },
+        length_min: formattedDur,
+        length_sec: !Number.isNaN(durSec) ? durSec : undefined,
+        views: item.views ? String(item.views) : '18.5K',
+        keywords: query,
+        embed: `https://xhamster.com/embed/${cleanId}`,
+        url: `/watch/xh-${cleanId}`,
+        rate: '4.9',
+      };
+    })
+    .filter((v: UnifiedVideo | null): v is UnifiedVideo => v !== null);
+}
+
+async function fetchXHamsterLive(
+  query: string,
+  page: number,
+  strictKeywords = false
+): Promise<UnifiedVideo[]> {
   try {
-    const url = `https://xhamster.com/search/${encodeURIComponent(query)}?page=${page}&quality=720p&format=json`;
+    const slug = query.trim().replace(/\s+/g, '+');
+    const url =
+      page > 1
+        ? `https://xhamster.com/search/${slug}?page=${page}`
+        : `https://xhamster.com/search/${slug}`;
+
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(2500),
-      next: { revalidate: 3600 },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36',
-        Accept: 'application/json, text/plain, */*',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
       },
     });
     if (!res.ok) return [];
-    const data = await res.json();
-    const list =
-      data?.videos ||
-      data?.searchResult?.videoThumbProps ||
-      data?.layoutPage?.videoListProps?.videoThumbProps ||
-      [];
+    const html = await res.text();
 
-    if (!Array.isArray(list)) return [];
+    const marker = html.indexOf('window.initials');
+    if (marker !== -1) {
+      const braceStart = html.indexOf('{', marker);
+      if (braceStart !== -1) {
+        const jsonStr = extractBalancedJson(html, braceStart);
+        if (jsonStr) {
+          const parsed = JSON.parse(jsonStr);
+          const list =
+            parsed?.searchResult?.videoThumbProps ||
+            parsed?.layoutPage?.videoListProps?.videoThumbProps ||
+            parsed?.videos ||
+            [];
+          const normalized = normalizeXHamsterItems(list, query, strictKeywords);
+          if (normalized.length > 0) return normalized;
+        }
+      }
+    }
 
-    return list
-      .map((item: Record<string, unknown>): UnifiedVideo | null => {
-        const rawId = String(item.id || item.pageURL || '');
-        const title = String(item.title || item.name || '').trim();
-        const thumb = String(item.thumbURL || item.thumb || item.image || '');
-        if (!rawId || !title || !thumb.startsWith('http') || !matchesTargetKeywords(title)) return null;
+    const propsMatch = html.match(/"videoThumbProps"\s*:\s*(\[[\s\S]*?\])\s*,\s*"/);
+    if (propsMatch && propsMatch[1]) {
+      const list = JSON.parse(propsMatch[1]);
+      return normalizeXHamsterItems(list, query, strictKeywords);
+    }
 
-        const cleanId = rawId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-24);
-        if (!cleanId) return null;
-
-        return {
-          id: `xh-${cleanId}`,
-          title,
-          default_thumb: { src: thumb },
-          length_min: item.duration ? String(item.duration) : '05:30',
-          views: item.views ? String(item.views) : '12.4K',
-          keywords: query,
-          embed: `https://xhamster.com/embed/${cleanId}`,
-          url: `/watch/xh-${cleanId}`,
-          rate: '4.9',
-        };
-      })
-      .filter((v: UnifiedVideo | null): v is UnifiedVideo => v !== null);
+    return [];
   } catch {
     return [];
   }
 }
 
-/**
- * Floods 'main' (Homepage) and 'reels' (/reels) with strictly keyword-matched,
- * non-repeating videos from Eporner + xHamster + local catalog, rotated every 1 hour.
- * 'main' and 'reels' use completely disjoint keyword pools & partitions so they never overlap.
- */
+export async function searchUnifiedVideos(
+  query: string,
+  page = 1,
+  perPage = 30,
+  order = 'latest'
+): Promise<UnifiedVideo[]> {
+  const cleanQuery = query.trim() || 'desi';
+  const safePage = Math.max(1, page);
+  const epOrder = order === 'most_viewed' ? 'most-popular' : order || 'latest';
+
+  const [epResults, xhResults] = await Promise.all([
+    fetchEpornerLive(cleanQuery, safePage, epOrder, perPage, false),
+    fetchXHamsterLive(cleanQuery, safePage, false),
+  ]);
+
+  const interleaved: UnifiedVideo[] = [];
+  const maxLen = Math.max(xhResults.length, epResults.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (xhResults[i]) interleaved.push(xhResults[i]);
+    if (epResults[i]) interleaved.push(epResults[i]);
+  }
+
+  if (interleaved.length < perPage) {
+    const tokens = cleanQuery
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
+
+    const localMatches: UnifiedVideo[] = (crawlIndex as RawCrawlItem[])
+      .filter((item) => {
+        if (!item.i || !item.i.startsWith('http')) return false;
+        const lower = (item.t || '').toLowerCase();
+        return tokens.length > 0 && tokens.every((tok) => lower.includes(tok));
+      })
+      .map((item) => ({
+        id: item.id,
+        title: item.t,
+        default_thumb: { src: item.i! },
+        length_min: item.d || '07:40',
+        views: item.v || '14.2K',
+        keywords: cleanQuery,
+        embed: `https://www.eporner.com/embed/${item.id}/`,
+        url: `/watch/${item.id}`,
+        rate: '4.8',
+      }));
+
+    const startIdx = (safePage - 1) * perPage;
+    interleaved.push(...localMatches.slice(startIdx, startIdx + perPage));
+  }
+
+  const seenIds = new Set<string>();
+  const deduped: UnifiedVideo[] = [];
+  for (const v of interleaved) {
+    if (seenIds.has(v.id)) continue;
+    seenIds.add(v.id);
+    deduped.push(v);
+  }
+
+  return deduped.slice(0, perPage);
+}
+
 export async function getHourlyKeywordFeed(
   feedType: 'main' | 'reels',
   page = 1,
@@ -185,16 +356,15 @@ export async function getHourlyKeywordFeed(
   const q2 = pool[(hourSeed + 1) % pool.length];
   const q3 = pool[(hourSeed + 2) % pool.length];
 
-  const apiPage = ((hourSeed + page - 1) % 15) + 1;
+  const apiPage = ((hourSeed + page - 1) % 25) + 1;
 
   const [ep1, ep2, xh1, xh2] = await Promise.all([
-    fetchEpornerByKeyword(q1, apiPage, order),
-    fetchEpornerByKeyword(q2, apiPage, order),
-    fetchXHamsterByKeyword(q1, apiPage),
-    fetchXHamsterByKeyword(q3, apiPage),
+    fetchEpornerLive(q1, apiPage, order, 24, true),
+    fetchEpornerLive(q2, apiPage, order, 24, true),
+    fetchXHamsterLive(q1, apiPage, true),
+    fetchXHamsterLive(q3, apiPage, true),
   ]);
 
-  // Local 60,511-video fallback partitioned strictly between main (even) and reels (odd)
   const localPool: UnifiedVideo[] = (crawlIndex as RawCrawlItem[])
     .filter((item) => item.i && item.i.startsWith('http') && matchesTargetKeywords(item.t))
     .filter((_, idx) => (feedType === 'reels' ? idx % 2 === 1 : idx % 2 === 0))
@@ -213,13 +383,11 @@ export async function getHourlyKeywordFeed(
   const shuffledLocal = seededShuffle(localPool, feedType === 'reels' ? hourSeed + 9973 : hourSeed);
   const combined = [...xh1, ...ep1, ...xh2, ...ep2, ...shuffledLocal];
 
-  // Strict deduplication by ID AND normalized title (no repeated videos ever)
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
   const unique: UnifiedVideo[] = [];
 
   for (const vid of combined) {
-    // Enforce disjoint ID parity across main vs reels so the two feeds never overlap
     const hash = vid.id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
     if (feedType === 'reels' && hash % 2 === 0 && !vid.id.startsWith('xh-')) continue;
     if (feedType === 'main' && hash % 2 === 1 && !vid.id.startsWith('xh-')) continue;
@@ -231,6 +399,10 @@ export async function getHourlyKeywordFeed(
     unique.push(vid);
   }
 
+  const pinned = page === 1 ? getPinnedVideos() : [];
+  const pinnedIds = new Set(pinned.map((p) => p.id));
+  const merged = [...pinned, ...unique.filter((v) => !pinnedIds.has(v.id))];
+
   const start = (Math.max(1, page) - 1) * limit;
-  return unique.slice(start, start + limit);
+  return merged.slice(start, start + limit);
 }

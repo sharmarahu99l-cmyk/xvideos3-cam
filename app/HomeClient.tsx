@@ -33,7 +33,7 @@ interface HomeClientProps {
 }
 
 const PER_PAGE = 30;
-const MAX_PAGES = 200;
+const MAX_PAGES = 1000;
 const HOME_SEEN_REELS_KEY = 'hubtube_home_seen_reels_v2';
 
 const INSTANT_DESI = [

@@ -1,36 +1,21 @@
 import type { Metadata } from 'next';
 import HomeClient from './HomeClient';
 import { StoredVideo } from './lib/userPrefs';
-import { getHourlyKeywordFeed } from '../lib/keywordFeed';
+import { getHourlyKeywordFeed, searchUnifiedVideos } from '../lib/keywordFeed';
 
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 async function getInitialVideos(query: string, page: number): Promise<StoredVideo[]> {
   const searchTerm = query.trim();
 
-  // Default homepage: 100% Easy-keyword + xHamster + Eporner feed rotated every 1 hour
   if (!searchTerm) {
     const feed = await getHourlyKeywordFeed('main', page, 30, 'latest');
     return feed as unknown as StoredVideo[];
   }
 
-  // Explicit user search query still works across full catalog
-  try {
-    const res = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
-        searchTerm
-      )}&per_page=30&page=${page}&order=most-popular&lq=0&thumbsize=big&format=json`,
-      {
-        next: { revalidate: 900 },
-        headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0.0.0 Safari/537.36' },
-      }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data.videos) ? data.videos : [];
-  } catch {
-    return [];
-  }
+  const results = await searchUnifiedVideos(searchTerm, page, 30, 'latest');
+  return results as unknown as StoredVideo[];
 }
 
 export async function generateMetadata({
@@ -58,7 +43,7 @@ export async function generateMetadata({
         ? `Desi MMS, Pakistani Viral Videos & Indian Sex Reels - Page ${page} | IndianSexVideo.tv`
         : 'Desi MMS, Indian Sex Reels, Pakistani Viral & Desi Leaked Videos HD | IndianSexVideo.tv',
     description:
-      'Stream free Desi MMS, Indian sex reels, Desi sex reels, Pakistani viral videos, Desi leaked videos, and Desi village girls HD clips updated hourly on IndianSexVideo.tv.',
+      'Stream free Desi MMS, Indian sex reels, Desi sex reels, Pakistani viral videos, Desi leaked videos, and Desi village girls HD clips updated hourly on HubTube (indiansexvideo.tv).',
     alternates: { canonical: page > 1 ? `/?page=${page}` : '/' },
   };
 }
