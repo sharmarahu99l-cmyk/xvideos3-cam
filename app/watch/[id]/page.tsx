@@ -1,13 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import crawlIndex from '../../../data/crawl-index.json';
 import manualVideos from '../../../data/manual-videos.json';
 import { searchUnifiedVideos, UnifiedVideo } from '../../../lib/keywordFeed';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type RawCrawlItem = { id: string; t: string; i?: string; d?: string; v?: string };
 type ManualVideoEntry = {
   id: string;
   title: string;
@@ -22,14 +20,13 @@ interface ResolvedVideo {
   id: string;
   title: string;
   embedUrl: string;
-  thumb: string;
   duration: string;
   views: string;
   keywords: string;
 }
 
 async function resolveVideoById(rawId: string): Promise<ResolvedVideo | null> {
-  const id = decodeURIComponent(rawId || '').trim();
+  const id = decodeURIComponent(rawId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
   if (!id) return null;
 
   // 1. Check manually pinned videos (data/manual-videos.json)
@@ -40,41 +37,21 @@ async function resolveVideoById(rawId: string): Promise<ResolvedVideo | null> {
       id: manualHit.id,
       title: manualHit.title || 'Featured HD Video',
       embedUrl: manualHit.embed,
-      thumb: manualHit.thumb || '',
       duration: manualHit.duration || '06:30',
       views: manualHit.views || '25.4K',
       keywords: manualHit.keywords || 'desi mms, viral desi',
     };
   }
 
-  // 2. Check xHamster videos (id prefixed with xh-)
-  if (id.startsWith('xh-')) {
-    const xhId = id.slice(3).replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!xhId) return null;
-    return {
-      id,
-      title: `Desi Viral HD Video (${xhId})`,
-      embedUrl: `https://xhamster.com/embed/${xhId}`,
-      thumb: '',
-      duration: '07:15',
-      views: '34.8K',
-      keywords: 'desi mms, viral video, hd stream',
-    };
-  }
-
-  // 3. Check local 60,511-video crawl index for instant title/stats
-  const localHit = (crawlIndex as RawCrawlItem[]).find((item) => item && item.id === id);
-
-  // 4. Try Eporner metadata API (non-blocking — never fails the page if Cloudflare IP is rate-limited)
+  // 2. Fetch live Eporner metadata by ID in real time
   try {
     const res = await fetch(
       `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`,
       {
         cache: 'no-store',
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(4000),
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36',
-          Accept: 'application/json',
+          Accept: 'application/json, text/plain, */*',
         },
       }
     );
@@ -88,29 +65,22 @@ async function resolveVideoById(rawId: string): Promise<ResolvedVideo | null> {
             typeof data.embed === 'string' && data.embed.startsWith('http')
               ? data.embed
               : `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
-          thumb: data.default_thumb?.src || localHit?.i || '',
-          duration: String(data.length_min || localHit?.d || '08:20'),
-          views: String(data.views || localHit?.v || '19.4K'),
+          duration: String(data.length_min || '08:20'),
+          views: String(data.views || '19.4K'),
           keywords: typeof data.keywords === 'string' ? data.keywords : 'desi, mms, hd',
         };
       }
     }
-  } catch {
-    // Fall through to direct embed fallback below
-  }
+  } catch {}
 
-  // 5. Direct Eporner embed fallback using the video ID directly
-  const safeEpId = id.replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!safeEpId) return null;
-
+  // 3. Direct Eporner embed fallback
   return {
-    id: safeEpId,
-    title: localHit?.t || `HD Desi & Viral Video (${safeEpId})`,
-    embedUrl: `https://www.eporner.com/embed/${safeEpId}/`,
-    thumb: localHit?.i || '',
-    duration: localHit?.d || '08:10',
-    views: localHit?.v || '16.2K',
-    keywords: 'desi mms, indian hd, viral video',
+    id,
+    title: `HD Video Stream (${id})`,
+    embedUrl: `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
+    duration: '08:00',
+    views: '15.0K',
+    keywords: 'desi, hd',
   };
 }
 
@@ -152,7 +122,7 @@ export default async function WatchPage({
       .split(/\s+/)
       .filter((w) => w.length > 3)
       .slice(0, 2)
-      .join(' ') || 'desi mms';
+      .join(' ') || 'desi';
 
   const relatedVideos: UnifiedVideo[] = await searchUnifiedVideos(relatedTopic, 1, 15, 'most-popular');
 
@@ -191,7 +161,6 @@ export default async function WatchPage({
             className="h-full w-full border-0"
             allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
             allowFullScreen
-            referrerPolicy="no-referrer-when-downgrade"
           />
         </div>
 
