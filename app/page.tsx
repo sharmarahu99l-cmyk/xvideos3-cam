@@ -10,11 +10,12 @@ async function getInitialVideos(query: string, page: number): Promise<StoredVide
   const searchTerm = query.trim();
 
   if (!searchTerm) {
-    const feed = await getHourlyKeywordFeed('main', page, 30, 'most-popular');
+    const feed = await getHourlyKeywordFeed('main', page, 30, '');
     return feed as unknown as StoredVideo[];
   }
 
-  const results = await searchUnifiedVideos(searchTerm, page, 30, 'most-popular');
+  // Exact 1:1 Eporner native search order with zero caching delay
+  const results = await searchUnifiedVideos(searchTerm, page, 30, '');
   return results as unknown as StoredVideo[];
 }
 

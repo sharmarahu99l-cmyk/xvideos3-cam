@@ -184,7 +184,7 @@ async function fetchVideos(
   query: string,
   pageNum: number = 1,
   perPage: number = PER_PAGE,
-  order: string = 'most-popular'
+  order: string = ''
 ): Promise<Video[]> {
   const searchTerm = query.trim() || 'desi';
   try {
@@ -201,7 +201,7 @@ async function fetchVideos(
 
   try {
     const direct = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}${order ? `&order=${encodeURIComponent(order)}` : ''}&lq=0&thumbsize=big&format=json`
     );
     if (direct.ok) {
       const data = await direct.json();
@@ -393,18 +393,15 @@ export default function HomeClient({
 
       const fetchedMain = usingSSRMain
         ? validInitial
-        : await fetchVideos(urlQuery, urlPage, PER_PAGE, 'most-popular');
+        : await fetchVideos(urlQuery, urlPage, PER_PAGE, '');
 
       if (!active) return;
 
       const seenIds = new Set<string>();
-      const seenTitles = new Set<string>();
       const uniqueMain: Video[] = [];
       for (const v of fetchedMain) {
-        const norm = normalizeTitleKey(v.title);
-        if (validThumb(v) && !seenIds.has(v.id) && !seenTitles.has(norm)) {
+        if (validThumb(v) && !seenIds.has(v.id)) {
           seenIds.add(v.id);
-          seenTitles.add(norm);
           uniqueMain.push(v);
         }
       }

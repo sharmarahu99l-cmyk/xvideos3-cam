@@ -65,16 +65,22 @@ export function getPinnedVideos(categorySlug?: string): UnifiedVideo[] {
 async function fetchEpornerExact(
   query: string,
   page: number,
-  order = 'most-popular',
+  order = '',
   perPage = 30
 ): Promise<UnifiedVideo[]> {
   try {
     const cleanQuery = query.trim() || 'desi';
     const safePage = Math.max(1, page);
     const safePerPage = Math.min(60, Math.max(10, perPage));
+    const cleanOrder = order.trim();
+    const orderParam =
+      cleanOrder && cleanOrder !== 'default'
+        ? `&order=${encodeURIComponent(cleanOrder === 'most_viewed' ? 'most-popular' : cleanOrder)}`
+        : '';
+
     const url = `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
       cleanQuery
-    )}&per_page=${safePerPage}&page=${safePage}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`;
+    )}&per_page=${safePerPage}&page=${safePage}${orderParam}&lq=0&thumbsize=big&format=json`;
 
     const res = await fetch(url, {
       cache: 'no-store',
@@ -120,16 +126,15 @@ async function fetchEpornerExact(
 }
 
 /**
- * Exact 1:1 real-time Eporner search mirror with zero caching delay and zero broken links.
+ * Exact 1:1 real-time Eporner search mirror matching Eporner's native search ranking & pagination.
  */
 export async function searchUnifiedVideos(
   query: string,
   page = 1,
   perPage = 30,
-  order = 'most-popular'
+  order = ''
 ): Promise<UnifiedVideo[]> {
-  const epOrder = order === 'most_viewed' ? 'most-popular' : order || 'most-popular';
-  return fetchEpornerExact(query, page, epOrder, perPage);
+  return fetchEpornerExact(query, page, order, perPage);
 }
 
 /**
@@ -139,7 +144,7 @@ export async function getHourlyKeywordFeed(
   feedType: 'main' | 'reels',
   page = 1,
   limit = 30,
-  order = 'most-popular'
+  order = ''
 ): Promise<UnifiedVideo[]> {
   const hourSeed = getHourlySeed();
 
@@ -163,9 +168,8 @@ export async function getHourlyKeywordFeed(
 
   const pool = feedType === 'reels' ? reelsQueries : mainQueries;
   const activeQuery = pool[hourSeed % pool.length];
-  const epOrder = order === 'most_viewed' ? 'most-popular' : order || 'most-popular';
 
-  const liveResults = await fetchEpornerExact(activeQuery, page, epOrder, limit);
+  const liveResults = await fetchEpornerExact(activeQuery, page, order, limit);
   const pinned = page === 1 && feedType === 'main' ? getPinnedVideos() : [];
   const pinnedIds = new Set(pinned.map((p) => p.id));
 
