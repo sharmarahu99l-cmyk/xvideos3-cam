@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import crawlIndex from '../../../../../data/crawl-index.json';
 
 type CrawlItem = { id: string; t: string; i?: string };
-
 const BASE_URL = 'https://indiansexvideo.tv';
 const CHUNK_SIZE = 10000;
 
@@ -53,7 +52,7 @@ export async function GET(
     return new NextResponse(xml, {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=86400',
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400',
       },
     });
   }
@@ -66,31 +65,21 @@ export async function GET(
           `${BASE_URL}/categories`,
           `${BASE_URL}/pornstars`,
           `${BASE_URL}/partners`,
-          ...[
-            'desi',
-            'indian',
-            'bhabhi',
-            'hindi',
-            'mms',
-            'south-indian',
-            'tamil',
-            'telugu',
-            'mallu',
-            'punjabi',
-          ].map((c) => `${BASE_URL}/category/${c}`),
+          ...['desi', 'indian', 'bhabhi', 'hindi', 'mms', 'south-indian', 'tamil', 'telugu', 'mallu', 'punjabi'].map(
+            (c) => `${BASE_URL}/category/${c}`
+          ),
         ].map((u) => `  <url><loc>${esc(u)}</loc><lastmod>${now}</lastmod><priority>0.8</priority></url>`)
       : [];
 
   const videoUrls = chunk.map(
-    (v) =>
-      `  <url><loc>${BASE_URL}/watch/${encodeURIComponent(v.id)}</loc><lastmod>${now}</lastmod><priority>0.7</priority></url>`
+    (v) => `  <url><loc>${BASE_URL}/watch/${encodeURIComponent(v.id)}</loc><lastmod>${now}</lastmod><priority>0.7</priority></url>`
   );
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[...staticUrls, ...videoUrls].join('\n')}\n</urlset>`;
   return new NextResponse(xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'public, max-age=86400, s-maxage=86400',
     },
   });
 }
