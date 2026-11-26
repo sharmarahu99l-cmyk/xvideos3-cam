@@ -893,10 +893,9 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
               : 0;
 
             const muteFlag = isUnmuted ? '0' : '1';
-            const startParam = isActive && seekStartSec > 0 ? `&start=${seekStartSec}` : '';
             const epornerEmbedUrl = `https://www.eporner.com/embed/${encodeURIComponent(
               v.id
-            )}/?autoplay=1&autostart=1&mute=${muteFlag}&muted=${muteFlag}${startParam}`;
+            )}/?autoplay=1&autostart=1&mute=${muteFlag}&muted=${muteFlag}`;
 
             return (
               <section
@@ -924,7 +923,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                         ref={(el) => {
                           if (isActive) activeIframeRef.current = el;
                         }}
-                        key={`ep-reel-${v.id}-${seekVersion}-${isUnmuted ? 'u' : 'm'}`}
+                        key={`ep-reel-${v.id}-${isUnmuted ? 'u' : 'm'}`}
                         src={epornerEmbedUrl}
                         title={v.title}
                         onLoad={(e) => {
@@ -932,7 +931,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                           sendPlayerCommand(e.currentTarget, isUnmuted ? 'unmute' : 'mute');
                         }}
                         sandbox="allow-scripts allow-same-origin allow-presentation"
-                        className="w-full h-full border-0 scale-[1.38] origin-center"
+                        className="w-full h-full border-0"
                         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                       />
                     </div>
@@ -1021,7 +1020,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                   </div>
 
                   {/* Bottom Title & Metadata */}
-                  <div className="absolute bottom-9 left-3.5 right-14 z-30 pointer-events-none">
+                  <div className="absolute bottom-14 left-3.5 right-14 z-30 pointer-events-none">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="bg-[#FF9900] text-black text-[10px] font-black px-2 py-0.5 rounded-full">
                         {activeBadgeText}
@@ -1041,47 +1040,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                     </h2>
                   </div>
 
-                  {/* Bottom Forward / Backward Seek Slider */}
-                  {isActive && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute bottom-0 inset-x-0 z-30 px-3 pb-2 pt-3 flex flex-col gap-1 bg-gradient-to-t from-black/95 to-transparent"
-                    >
-                      {isScrubbing && (
-                        <div className="self-center bg-black/85 border border-[#FF9900]/60 text-[#FF9900] text-[11px] font-black px-2.5 py-0.5 rounded-full shadow">
-                          {formatSecondsLabel(scrubPreviewSec)} / {formatSecondsLabel(totalDurationSec)}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-gray-300 tabular-nums shrink-0">
-                          {formatSecondsLabel(currentSliderSec)}
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={Math.max(1, totalDurationSec)}
-                          step={1}
-                          value={Math.min(currentSliderSec, Math.max(1, totalDurationSec))}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setIsScrubbing(true);
-                            setScrubPreviewSec(val);
-                          }}
-                          onMouseUp={(e) =>
-                            commitSeekToSecond(Number((e.target as HTMLInputElement).value))
-                          }
-                          onTouchEnd={(e) =>
-                            commitSeekToSecond(Number((e.target as HTMLInputElement).value))
-                          }
-                          aria-label="Seek forward or backward"
-                          className="w-full h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#FF9900]"
-                        />
-                        <span className="text-[10px] font-bold text-gray-400 tabular-nums shrink-0">
-                          {formatSecondsLabel(totalDurationSec)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                  
                 </div>
               </section>
             );
