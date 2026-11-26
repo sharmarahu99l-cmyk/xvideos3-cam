@@ -855,7 +855,7 @@ export default function HomeClient({
                     href="/reels"
                     className="group relative w-36 sm:w-44 aspect-[9/16] shrink-0 rounded-2xl overflow-hidden bg-black border border-gray-800 hover:border-[#FF9900] transition snap-start shadow-lg"
                   >
-                    <img
+                    <img referrerPolicy="no-referrer"
                       src={v.default_thumb.src}
                       alt={v.title}
                       loading="eager"

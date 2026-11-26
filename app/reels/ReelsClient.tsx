@@ -910,7 +910,7 @@ export default function ReelsClient({ initialVideos }: { initialVideos: ReelVide
                 {/* Full-Screen 9:16 Reels Container */}
                 <div className="relative h-[100dvh] w-full sm:w-[440px] bg-black overflow-hidden sm:border-x sm:border-white/10">
                   {/* Full-Bleed Poster */}
-                  <img
+                  <img referrerPolicy="no-referrer"
                     src={v.default_thumb.src}
                     alt={v.title}
                     loading={idx <= 2 ? 'eager' : 'lazy'}

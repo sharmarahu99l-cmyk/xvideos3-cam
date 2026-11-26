@@ -65,6 +65,15 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return copy;
 }
 
+function isValidThumbUrl(src: string): boolean {
+  const lower = (src || '').toLowerCase().trim();
+  if (!lower.startsWith('http')) return false;
+  if (lower.includes('no-thumb') || lower.includes('placeholder') || lower.includes('deleted')) {
+    return false;
+  }
+  return true;
+}
+
 export function getPinnedVideos(categorySlug?: string): UnifiedVideo[] {
   const list = (Array.isArray(manualVideos) ? manualVideos : []) as ManualVideoEntry[];
   return list
@@ -92,7 +101,7 @@ export function getPinnedVideos(categorySlug?: string): UnifiedVideo[] {
 async function fetchEpornerLive(
   query: string,
   page: number,
-  order = 'latest',
+  order = 'most-popular',
   perPage = 30,
   strictKeywords = false
 ): Promise<UnifiedVideo[]> {
@@ -103,7 +112,7 @@ async function fetchEpornerLive(
 
     const res = await fetch(url, {
       cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(4500),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36',
         Accept: 'application/json',
@@ -119,7 +128,7 @@ async function fetchEpornerLive(
         const title = String(v?.title || '').trim();
         const thumbObj = v?.default_thumb as { src?: string } | undefined;
         const thumb = String(thumbObj?.src || '').trim();
-        if (!id || !title || !thumb.startsWith('http')) return null;
+        if (!id || !title || !isValidThumbUrl(thumb)) return null;
         if (strictKeywords && !matchesTargetKeywords(title)) return null;
 
         return {
@@ -178,7 +187,7 @@ function normalizeXHamsterItems(
       const rawId = String(item.id || (idMatch ? idMatch[1] : '') || '');
       const title = String(item.title || item.name || '').trim();
       const thumb = String(item.thumbURL || item.thumb || item.image || item.spriteURL || '');
-      if (!rawId || !title || !thumb.startsWith('http')) return null;
+      if (!rawId || !title || !isValidThumbUrl(thumb)) return null;
       if (strictKeywords && !matchesTargetKeywords(title)) return null;
 
       const cleanId = rawId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-24);
@@ -222,7 +231,7 @@ async function fetchXHamsterLive(
 
     const res = await fetch(url, {
       cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(4500),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
@@ -264,62 +273,30 @@ async function fetchXHamsterLive(
   }
 }
 
-/**
- * Real-time, uncached, exact 1:1 mirror of Eporner + xHamster top results for ANY search query.
- * Passes the exact page number directly to both engines (supporting up to 100,000 results)
- * with zero caching delay, placing #1 xHamster, #1 Eporner, #2 xHamster, #2 Eporner at the top.
- */
 export async function searchUnifiedVideos(
   query: string,
   page = 1,
   perPage = 30,
-  order = 'latest'
+  order = 'most-popular'
 ): Promise<UnifiedVideo[]> {
   const cleanQuery = query.trim() || 'desi';
   const safePage = Math.max(1, page);
-  const epOrder = order === 'most_viewed' ? 'most-popular' : order || 'latest';
+  const sortOrders = ['most-popular', 'latest', 'top-weekly', 'top-monthly', 'top-rated'];
+  const bucketIdx = Math.floor((safePage - 1) / 30) % sortOrders.length;
+  const epOrder =
+    order && order !== 'most-popular' && order !== 'most_viewed' ? order : sortOrders[bucketIdx];
+  const epPage = ((safePage - 1) % 30) + 1;
 
-  // Fetch exact page from both Eporner and xHamster simultaneously with zero cache
   const [epResults, xhResults] = await Promise.all([
-    fetchEpornerLive(cleanQuery, safePage, epOrder, perPage, false),
+    fetchEpornerLive(cleanQuery, epPage, epOrder, perPage, false),
     fetchXHamsterLive(cleanQuery, safePage, false),
   ]);
 
-  // Strict 1:1 interleaving of top results from both sites (#1 xHamster, #1 Eporner, #2 xHamster, #2 Eporner...)
   const interleaved: UnifiedVideo[] = [];
-  const maxLen = Math.max(xhResults.length, epResults.length);
+  const maxLen = Math.max(epResults.length, xhResults.length);
   for (let i = 0; i < maxLen; i++) {
-    if (xhResults[i]) interleaved.push(xhResults[i]);
     if (epResults[i]) interleaved.push(epResults[i]);
-  }
-
-  // Only pad from local 60,511-video catalog if both live APIs returned fewer than perPage items
-  if (interleaved.length < perPage) {
-    const tokens = cleanQuery
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((t) => t.length > 1);
-
-    const localMatches: UnifiedVideo[] = (crawlIndex as RawCrawlItem[])
-      .filter((item) => {
-        if (!item.i || !item.i.startsWith('http')) return false;
-        const lower = (item.t || '').toLowerCase();
-        return tokens.length > 0 && tokens.every((tok) => lower.includes(tok));
-      })
-      .map((item) => ({
-        id: item.id,
-        title: item.t,
-        default_thumb: { src: item.i! },
-        length_min: item.d || '07:40',
-        views: item.v || '14.2K',
-        keywords: cleanQuery,
-        embed: `https://www.eporner.com/embed/${item.id}/`,
-        url: `/watch/${item.id}`,
-        rate: '4.8',
-      }));
-
-    const startIdx = (safePage - 1) * perPage;
-    interleaved.push(...localMatches.slice(startIdx, startIdx + perPage));
+    if (xhResults[i]) interleaved.push(xhResults[i]);
   }
 
   const seenIds = new Set<string>();
@@ -333,10 +310,6 @@ export async function searchUnifiedVideos(
   return deduped.slice(0, perPage);
 }
 
-/**
- * Floods 'main' (Homepage) and 'reels' (/reels) with strictly keyword-matched,
- * non-repeating videos from Eporner + xHamster + local catalog, rotated every 1 hour.
- */
 export async function getHourlyKeywordFeed(
   feedType: 'main' | 'reels',
   page = 1,
@@ -378,7 +351,7 @@ export async function getHourlyKeywordFeed(
   ]);
 
   const localPool: UnifiedVideo[] = (crawlIndex as RawCrawlItem[])
-    .filter((item) => item.i && item.i.startsWith('http') && matchesTargetKeywords(item.t))
+    .filter((item) => item.i && isValidThumbUrl(item.i) && matchesTargetKeywords(item.t))
     .filter((_, idx) => (feedType === 'reels' ? idx % 2 === 1 : idx % 2 === 0))
     .map((item) => ({
       id: item.id,
@@ -393,7 +366,7 @@ export async function getHourlyKeywordFeed(
     }));
 
   const shuffledLocal = seededShuffle(localPool, feedType === 'reels' ? hourSeed + 9973 : hourSeed);
-  const combined = [...xh1, ...ep1, ...xh2, ...ep2, ...shuffledLocal];
+  const combined = [...ep1, ...xh1, ...ep2, ...xh2, ...shuffledLocal];
 
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
