@@ -1,4 +1,4 @@
-import RelatedVideos from "../../components/RelatedVideos";
+import RelatedVideos from "../../../components/RelatedVideos";
 import type { Metadata } from 'next';
 import WatchClient, { type WatchVideo } from './WatchClient';
 

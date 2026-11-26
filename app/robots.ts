@@ -22,7 +22,13 @@ export default function robots(): MetadataRoute.Robots {
         disallow: '/',
       },
       {
-        userAgent: ['Bingbot', 'YandexBot'],
+        userAgent: 'Bingbot',
+        allow: '/',
+        disallow: ['/api/', '/login', '/signup', '/history'],
+        crawlDelay: 2,
+      },
+      {
+        userAgent: 'YandexBot',
         allow: '/',
         disallow: ['/api/', '/login', '/signup', '/history'],
         crawlDelay: 2,
