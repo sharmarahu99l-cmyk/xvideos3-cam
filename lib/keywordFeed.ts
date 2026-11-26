@@ -113,10 +113,7 @@ async function fetchEpornerLive(
     const res = await fetch(url, {
       cache: 'no-store',
       signal: AbortSignal.timeout(4500),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36',
-        Accept: 'application/json',
-      },
+      headers: { Accept: 'application/json, text/plain, */*' },
     });
     if (!res.ok) return [];
     const data = await res.json();

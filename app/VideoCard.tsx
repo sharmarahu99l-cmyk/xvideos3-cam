@@ -162,6 +162,7 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
       <div className="relative w-full aspect-video bg-black overflow-hidden">
         <img
           src={imgSrc}
+          referrerPolicy="no-referrer"
           alt={video.title}
           loading="lazy"
           decoding="async"
@@ -169,7 +170,7 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
             if (fallback && imgSrc !== fallback) {
               setImgSrc(fallback);
             } else {
-              setHidden(true);
+              /* keep card visible */
             }
           }}
           className={`w-full h-full object-cover transition-transform duration-500 ${
