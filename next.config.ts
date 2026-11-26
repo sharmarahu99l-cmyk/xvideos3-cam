@@ -1,6 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async headers() {
+    return [
+      {
+        source: "/watch/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800" },
+        ],
+      },
+      {
+        source: "/category/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       { source: "/sitemap-:num.xml", destination: "/api/xml-sitemap/page/:num" },
