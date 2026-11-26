@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getHourlyKeywordFeed } from '../../../lib/keywordFeed';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 3600;
 
 export interface ReelItem {
   id: string;
@@ -15,37 +15,55 @@ export interface ReelItem {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const query = (searchParams.get('q') || 'desi').trim();
+  const rawQuery = (searchParams.get('q') || '').trim().toLowerCase();
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const orderingParam = searchParams.get('order') || 'top-weekly';
+  const orderingParam = searchParams.get('order') || 'latest';
 
-  const epornerOrder =
-    orderingParam === 'newest' || orderingParam === 'latest'
-      ? 'latest'
-      : orderingParam === 'rating' || orderingParam === 'top-rated'
+  const order =
+    orderingParam === 'rating' || orderingParam === 'top-rated'
       ? 'top-rated'
       : orderingParam === 'mostviewed' || orderingParam === 'most-popular'
       ? 'most-popular'
-      : 'top-weekly';
+      : 'latest';
 
+  // Default Reels feed ('', 'desi', 'reels'): strictly disjoint hourly keyword + xHamster feed
+  if (!rawQuery || rawQuery === 'desi' || rawQuery === 'reels') {
+    const items = await getHourlyKeywordFeed('reels', page, 18, order);
+    const out: ReelItem[] = items.map((v) => ({
+      id: v.id,
+      title: v.title,
+      default_thumb: v.default_thumb,
+      length_min: v.length_min,
+      length_sec: v.length_sec,
+      views: v.views ?? 0,
+      keywords: v.keywords || 'indian sex reels, desi sex reels',
+    }));
+
+    return NextResponse.json(out, {
+      headers: {
+        'Cache-Control': 'public, max-age=600, s-maxage=3600, stale-while-revalidate=86400',
+      },
+    });
+  }
+
+  // Specific topic filter inside Reels player
   try {
     const url = `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
-      query
-    )}&per_page=18&page=${page}&order=${encodeURIComponent(
-      epornerOrder
-    )}&lq=0&thumbsize=big&format=json`;
+      rawQuery
+    )}&per_page=18&page=${page}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`;
 
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(3000),
+      next: { revalidate: 3600 },
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         Accept: 'application/json',
       },
-      cache: 'no-store',
     });
 
     if (!res.ok) {
-      return NextResponse.json([], { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json([], { headers: { 'Cache-Control': 'public, s-maxage=300' } });
     }
 
     const data = await res.json();
@@ -69,8 +87,12 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json(out, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(out, {
+      headers: {
+        'Cache-Control': 'public, max-age=600, s-maxage=3600, stale-while-revalidate=86400',
+      },
+    });
   } catch {
-    return NextResponse.json([], { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json([], { headers: { 'Cache-Control': 'public, s-maxage=300' } });
   }
 }

@@ -1,11 +1,20 @@
-import TrendingHubBar from "../components/TrendingHubBar";
-import Link from "next/link";
 import type { Metadata } from 'next';
 import HomeClient from './HomeClient';
 import { StoredVideo } from './lib/userPrefs';
+import { getHourlyKeywordFeed } from '../lib/keywordFeed';
+
+export const revalidate = 3600;
 
 async function getInitialVideos(query: string, page: number): Promise<StoredVideo[]> {
-  const searchTerm = query.trim() || 'desi';
+  const searchTerm = query.trim();
+
+  // Default homepage: 100% Easy-keyword + xHamster + Eporner feed rotated every 1 hour
+  if (!searchTerm) {
+    const feed = await getHourlyKeywordFeed('main', page, 30, 'latest');
+    return feed as unknown as StoredVideo[];
+  }
+
+  // Explicit user search query still works across full catalog
   try {
     const res = await fetch(
       `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
@@ -46,10 +55,10 @@ export async function generateMetadata({
   return {
     title:
       page > 1
-        ? `Trending Desi Videos, Viral MMS & HD Porn - Page ${page} | HubTube IndianSexVideo`
-        : 'Desi Videos, Viral Desi MMS, Hindi Audio Bhabhi & Free HD Porn | HubTube IndianSexVideo',
+        ? `Desi MMS, Pakistani Viral Videos & Indian Sex Reels - Page ${page} | IndianSexVideo.tv`
+        : 'Desi MMS, Indian Sex Reels, Pakistani Viral & Desi Leaked Videos HD | IndianSexVideo.tv',
     description:
-      'Watch latest new Desi videos, viral Desi MMS, Hindi audio bhabhi, Indian aunty, Punjabi kudi, Pakistani MMS, and 4K HD videos streaming free on HubTube (indiansexvideo.tv).',
+      'Stream free Desi MMS, Indian sex reels, Desi sex reels, Pakistani viral videos, Desi leaked videos, and Desi village girls HD clips updated hourly on IndianSexVideo.tv.',
     alternates: { canonical: page > 1 ? `/?page=${page}` : '/' },
   };
 }

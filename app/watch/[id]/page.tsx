@@ -50,6 +50,16 @@ export default async function WatchPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (id.startsWith("xh-")) {
+    const xhId = id.slice(3);
+    return (
+      <main className="mx-auto max-w-5xl px-3 py-6">
+        <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
+          <iframe src={`https://xhamster.com/embed/${xhId}`} className="h-full w-full border-0" allowFullScreen />
+        </div>
+      </main>
+    );
+  }
   const initialVideo = await getVideoById(id);
 
   const jsonLd = initialVideo

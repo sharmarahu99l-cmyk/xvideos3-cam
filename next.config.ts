@@ -4,6 +4,18 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/",
+        headers: [{ key: "Cache-Control", value: "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400" }],
+      },
+      {
+        source: "/categories",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600, s-maxage=604800, stale-while-revalidate=86400" }],
+      },
+      {
+        source: "/pornstars",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600, s-maxage=604800, stale-while-revalidate=86400" }],
+      },
+      {
         source: "/watch/:path*",
         headers: [
           { key: "Cache-Control", value: "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800" },
