@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from '../../VideoCard';
 import JuicyBanner from '../../JuicyBanner';
+import AdSenseUnit from '../../AdSenseUnit';
 import HubTubePlayer from './HubTubePlayer';
 import {
   recordWatchedVideo,
@@ -502,6 +503,7 @@ export default function WatchClient({
         />
 
         <JuicyBanner />
+        <AdSenseUnit slot="1225474723" />
 
         <div className="mt-6 bg-[#111] p-6 rounded-2xl border border-gray-800">
           <h1 className="text-white text-2xl md:text-3xl font-black mb-2 leading-snug">

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import VideoCard from './VideoCard';
 import JuicyBanner from './JuicyBanner';
+import AdSenseUnit from './AdSenseUnit';
 import {
   StoredVideo,
   trackUserInterest,
@@ -808,6 +809,7 @@ export default function HomeClient({
 
         {/* Top Banner Ad */}
         <JuicyBanner />
+        <AdSenseUnit slot="1225474723" />
 
         {/* Homepage Reels Shelf — Brand-New Randomized Pool on Every Refresh, Rotates Every 2s */}
         {isMainHomepage && (
