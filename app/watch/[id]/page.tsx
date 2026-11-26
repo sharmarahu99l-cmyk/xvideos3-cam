@@ -5,6 +5,7 @@ import {
   buildUniqueSeoDescription,
   cleanEpornerTitle,
   extractVideoTags,
+  isValidRealTitle,
 } from '../../../lib/seoDescription';
 
 export const dynamic = 'force-dynamic';
@@ -20,11 +21,34 @@ type ManualVideoEntry = {
   keywords?: string;
 };
 
+async function fetchTitleFromRedirectSlug(id: string): Promise<string> {
+  try {
+    const res = await fetch(`https://www.eporner.com/video-${encodeURIComponent(id)}/`, {
+      method: 'GET',
+      redirect: 'manual',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3500),
+    });
+    const loc = res.headers.get('location') || '';
+    const slugMatch = loc.match(/\/video-[^/]+\/([^/?#]+)/i);
+    if (slugMatch && slugMatch[1]) {
+      const words = slugMatch[1]
+        .replace(/[-_]+/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+      const candidate = words.join(' ');
+      if (isValidRealTitle(candidate, id)) return candidate;
+    }
+  } catch {}
+  return '';
+}
+
 async function fetchRealTitleFromEmbed(id: string): Promise<string> {
   try {
     const res = await fetch(`https://www.eporner.com/embed/${encodeURIComponent(id)}/`, {
       cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(3500),
       headers: {
         Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
       },
@@ -59,7 +83,7 @@ async function getVideoById(rawId: string): Promise<WatchVideo | null> {
       default_thumb: { src: manualHit.thumb },
       length_min: manualHit.duration || '06:30',
       length_sec: 390,
-      views: manualHit.views || '25.4K',
+      views: manualHit.views || '25400',
       keywords: manualHit.keywords || extractVideoTags(manualHit.title).join(', '),
       embed: manualHit.embed,
       added: '2026-11-26 12:00:00',
@@ -85,8 +109,8 @@ async function getVideoById(rawId: string): Promise<WatchVideo | null> {
       }
       if (res.ok) {
         const data: WatchVideo = await res.json();
-        if (data?.id && data?.title) {
-          const realTitle = cleanEpornerTitle(data.title, id);
+        const realTitle = cleanEpornerTitle(data?.title || '', id);
+        if (data?.id && realTitle) {
           const derivedTags = extractVideoTags(realTitle, data.keywords);
           return {
             ...data,
@@ -104,9 +128,10 @@ async function getVideoById(rawId: string): Promise<WatchVideo | null> {
     }
   }
 
-  // 3. Scrape real <title> from Eporner embed HTML so placeholder IDs never appear
-  const scrapedTitle = await fetchRealTitleFromEmbed(id);
-  const resolvedTitle = scrapedTitle || `Desi & Viral HD Clip ${id}`;
+  // 3. Resolve real title from Eporner canonical URL slug redirect or embed <title>
+  const slugTitle = await fetchTitleFromRedirectSlug(id);
+  const embedTitle = slugTitle ? '' : await fetchRealTitleFromEmbed(id);
+  const resolvedTitle = slugTitle || embedTitle || `Desi Viral HD Video ${id}`;
   const resolvedTags = extractVideoTags(resolvedTitle);
 
   return {
@@ -137,7 +162,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const video = await getVideoById(id);
-  const realTitle = video?.title || `Watch HD Video ${id}`;
+  const realTitle = video?.title || `Desi Viral HD Video ${id}`;
   const uniqueDescription = buildUniqueSeoDescription({
     id,
     title: realTitle,

@@ -1,30 +1,44 @@
+export function isValidRealTitle(title: string, id?: string): boolean {
+  const clean = (title || '').trim();
+  if (clean.length < 4) return false;
+  if (!/[a-zA-Z0-9]{2,}/.test(clean)) return false;
+  const lower = clean.toLowerCase();
+  if (id && lower.includes(`(${id.toLowerCase()})`)) return false;
+  if (
+    lower.startsWith('watch hd desi & viral video') ||
+    lower.startsWith('hd video stream') ||
+    lower.startsWith('desi & viral hd clip') ||
+    lower === 'eporner' ||
+    lower === 'just a moment...' ||
+    lower === 'attention required!'
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function cleanEpornerTitle(rawTitle: string, id: string): string {
   const cleaned = (rawTitle || '')
     .replace(/\s*[-|]\s*EPORNER(\.COM)?\s*$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
-  return cleaned || `HD Video Stream ${id}`;
+  return isValidRealTitle(cleaned, id) ? cleaned : '';
 }
 
 export function isFallbackPlaceholderTitle(title: string, id: string): boolean {
-  const lower = (title || '').toLowerCase();
-  return (
-    !title ||
-    lower.includes(`(${id.toLowerCase()})`) ||
-    lower.startsWith('watch hd desi & viral video') ||
-    lower.startsWith('hd video stream') ||
-    lower.startsWith('desi & viral hd clip')
-  );
+  return !isValidRealTitle(title, id);
 }
 
 export function extractVideoTags(title: string, rawKeywords?: string): string[] {
   const stopWords = new Set([
     'with', 'from', 'that', 'this', 'have', 'video', 'videos', 'watch', 'free',
     'porn', 'stream', 'streaming', 'online', 'full', 'part', 'eporner', 'hubtube',
-    'making', 'xxxvideos',
+    'making', 'xxxvideos', 'clip', 'clips', 'viral',
   ]);
 
-  const titleLower = title.toLowerCase().trim();
+  const safeTitle = isValidRealTitle(title) ? title : '';
+  const titleLower = safeTitle.toLowerCase().trim();
+
   const fromKeywords = (rawKeywords || '')
     .split(',')
     .map((k) => k.trim())
@@ -33,7 +47,7 @@ export function extractVideoTags(title: string, rawKeywords?: string): string[] 
       return low.length >= 3 && low !== titleLower && !stopWords.has(low);
     });
 
-  const fromTitle = title
+  const fromTitle = safeTitle
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
@@ -58,18 +72,22 @@ export function buildUniqueSeoDescription(params: {
   duration?: string | number;
   views?: string | number;
 }): string {
-  const title = cleanEpornerTitle(params.title, params.id);
-  const tags = extractVideoTags(title, params.keywords);
+  const validTitle = isValidRealTitle(params.title, params.id)
+    ? params.title.trim()
+    : `Desi Viral HD Video ${params.id}`;
+  const tags = extractVideoTags(validTitle, params.keywords);
   const topCluster = tags.slice(0, 4).join(', ');
   const midCluster = tags.slice(4, 8).join(', ');
   const durationLabel = params.duration ? `${params.duration} full-length` : 'full-length HD';
-  const viewsLabel = params.views ? `${Number(params.views).toLocaleString()} views` : 'trending views';
+  const rawViewsNum = Number(String(params.views || '').replace(/[^0-9]/g, ''));
+  const viewsLabel =
+    rawViewsNum > 0 ? `${rawViewsNum.toLocaleString()} views` : 'trending views';
 
-  const sentence1 = `Watch "${title}" in ${durationLabel} HD (${viewsLabel}) on IndianSexVideo.tv.`;
+  const sentence1 = `Watch "${validTitle}" in ${durationLabel} HD (${viewsLabel}) on IndianSexVideo.tv.`;
   const sentence2 = topCluster
-    ? ` Categorized under ${topCluster}${midCluster ? ` with themes including ${midCluster}` : ''}, this upload delivers instant adaptive streaming and mobile-ready playback.`
-    : ` Indexed for instant adaptive streaming, mobile-ready playback, and fast timeline seeking without buffering.`;
-  const sentence3 = ` Browse similar ${tags[0] || 'desi'} and ${tags[1] || 'viral'} clips matched directly to "${title}" below.`;
+    ? ` Tagged under ${topCluster}${midCluster ? ` featuring ${midCluster}` : ''}, this upload delivers instant adaptive streaming and smooth timeline scrubbing across mobile and desktop.`
+    : ` Indexed for instant adaptive streaming, mobile playback, and smooth timeline scrubbing without buffering.`;
+  const sentence3 = ` Discover similar ${tags[0] || 'desi'} and ${tags[1] || 'indian'} videos matched directly to "${validTitle}" below.`;
 
   return `${sentence1}${sentence2}${sentence3}`;
 }
