@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import WatchClient, { type WatchVideo } from './WatchClient';
 import manualVideos from '../../../data/manual-videos.json';
+import {
+  buildUniqueSeoDescription,
+  cleanEpornerTitle,
+  extractVideoTags,
+} from '../../../lib/seoDescription';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,6 +20,31 @@ type ManualVideoEntry = {
   keywords?: string;
 };
 
+async function fetchRealTitleFromEmbed(id: string): Promise<string> {
+  try {
+    const res = await fetch(`https://www.eporner.com/embed/${encodeURIComponent(id)}/`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+      },
+    });
+    if (!res.ok) return '';
+    const html = await res.text();
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      const decoded = titleMatch[1]
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+      return cleanEpornerTitle(decoded, id);
+    }
+  } catch {}
+  return '';
+}
+
 async function getVideoById(rawId: string): Promise<WatchVideo | null> {
   const id = decodeURIComponent(rawId || '').trim();
   if (!id) return null;
@@ -28,48 +58,65 @@ async function getVideoById(rawId: string): Promise<WatchVideo | null> {
       title: manualHit.title,
       default_thumb: { src: manualHit.thumb },
       length_min: manualHit.duration || '06:30',
+      length_sec: 390,
       views: manualHit.views || '25.4K',
-      keywords: manualHit.keywords || 'desi mms, viral desi, indian hd',
+      keywords: manualHit.keywords || extractVideoTags(manualHit.title).join(', '),
       embed: manualHit.embed,
       added: '2026-11-26 12:00:00',
     } as WatchVideo;
   }
 
-  // 2. Fetch live Eporner video details (including full keywords/tags, duration, views, thumb)
-  try {
-    const res = await fetch(
-      `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`,
-      {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(4500),
-        headers: {
-          Accept: 'application/json, text/plain, */*',
-        },
+  // 2. Fetch live Eporner JSON metadata (real title, real keywords/tags, views, duration)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(
+        `https://www.eporner.com/api/v2/video/id/?id=${encodeURIComponent(id)}&thumbsize=big&format=json`,
+        {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(4500),
+          headers: {
+            Accept: 'application/json, text/plain, */*',
+          },
+        }
+      );
+      if (res.status === 503 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 350));
+        continue;
       }
-    );
-    if (res.ok) {
-      const data: WatchVideo = await res.json();
-      if (data?.id && data?.title) {
-        return {
-          ...data,
-          embed:
-            typeof data.embed === 'string' && data.embed.startsWith('http')
-              ? data.embed
-              : `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
-        };
+      if (res.ok) {
+        const data: WatchVideo = await res.json();
+        if (data?.id && data?.title) {
+          const realTitle = cleanEpornerTitle(data.title, id);
+          const derivedTags = extractVideoTags(realTitle, data.keywords);
+          return {
+            ...data,
+            title: realTitle,
+            keywords: derivedTags.join(', '),
+            embed:
+              typeof data.embed === 'string' && data.embed.startsWith('http')
+                ? data.embed
+                : `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
+          };
+        }
       }
+    } catch {
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
     }
-  } catch {}
+  }
 
-  // 3. Guaranteed fallback object so WatchClient ALWAYS renders the player, description, tags & Similar Videos
+  // 3. Scrape real <title> from Eporner embed HTML so placeholder IDs never appear
+  const scrapedTitle = await fetchRealTitleFromEmbed(id);
+  const resolvedTitle = scrapedTitle || `Desi & Viral HD Clip ${id}`;
+  const resolvedTags = extractVideoTags(resolvedTitle);
+
   return {
     id,
-    title: `Watch HD Desi & Viral Video (${id})`,
+    title: resolvedTitle,
     default_thumb: { src: '' },
     length_min: '08:15',
     length_sec: 495,
-    views: '18.4K',
-    keywords: 'desi, indian, desi mms, bhabhi, viral video, hd porn',
+    views: '18400',
+    keywords: resolvedTags.join(', '),
     embed: `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
     added: '2026-11-26 12:00:00',
   } as WatchVideo;
@@ -90,12 +137,19 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const video = await getVideoById(id);
-  const title = video?.title
-    ? `${video.title} | HubTube - IndianSexVideo HD`
-    : 'Watch Free HD Video | HubTube - IndianSexVideo';
+  const realTitle = video?.title || `Watch HD Video ${id}`;
+  const uniqueDescription = buildUniqueSeoDescription({
+    id,
+    title: realTitle,
+    keywords: video?.keywords,
+    duration: video?.length_min,
+    views: video?.views,
+  });
+
   return {
-    title,
-    description: `Stream ${video?.title || 'HD Desi and viral videos'} free on HubTube (indiansexvideo.tv).`,
+    title: `${realTitle} | HubTube - IndianSexVideo.tv`,
+    description: uniqueDescription,
+    keywords: video?.keywords,
     alternates: { canonical: `/watch/${encodeURIComponent(id)}` },
   };
 }
@@ -108,18 +162,29 @@ export default async function WatchPage({
   const { id } = await params;
   const initialVideo = await getVideoById(id);
 
+  const uniqueDescription = initialVideo
+    ? buildUniqueSeoDescription({
+        id,
+        title: initialVideo.title,
+        keywords: initialVideo.keywords,
+        duration: initialVideo.length_min,
+        views: initialVideo.views,
+      })
+    : '';
+
   const jsonLd = initialVideo
     ? {
         '@context': 'https://schema.org',
         '@type': 'VideoObject',
         name: initialVideo.title,
-        description: `Watch ${initialVideo.title} in free HD on HubTube (indiansexvideo.tv).`,
+        description: uniqueDescription,
+        keywords: initialVideo.keywords,
         thumbnailUrl: initialVideo.default_thumb?.src
           ? [initialVideo.default_thumb.src]
           : undefined,
         uploadDate: initialVideo.added
           ? new Date(initialVideo.added).toISOString()
-          : '2026-01-01T00:00:00Z',
+          : '2026-11-26T00:00:00Z',
         duration: toIsoDuration(initialVideo.length_sec),
         embedUrl: `https://www.eporner.com/embed/${encodeURIComponent(id)}/`,
         contentUrl: `https://indiansexvideo.tv/watch/${encodeURIComponent(id)}`,

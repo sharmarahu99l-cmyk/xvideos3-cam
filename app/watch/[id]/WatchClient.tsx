@@ -1,3 +1,9 @@
+import {
+  buildUniqueSeoDescription,
+  cleanEpornerTitle,
+  extractVideoTags,
+  isFallbackPlaceholderTitle,
+} from '../../../lib/seoDescription';
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
@@ -129,7 +135,7 @@ export default function WatchClient({
 
       try {
         const direct = await fetch(
-          `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`
+          `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${pageNum}&order=${encodeURIComponent(order)}&lq=1&thumbsize=big&format=json`
         );
         if (direct.ok) {
           const data = await direct.json();
@@ -218,7 +224,7 @@ export default function WatchClient({
     };
 
     const initVideo = async () => {
-      if (initialVideo && initialVideo.id === id) {
+      if (initialVideo && initialVideo.id === id && !isFallbackPlaceholderTitle(initialVideo.title, id)) {
         handleLoaded(initialVideo);
         return;
       }
@@ -241,7 +247,12 @@ export default function WatchClient({
         if (directRes.ok) {
           const directData: WatchVideo = await directRes.json();
           if (directData && directData.id) {
-            handleLoaded(directData);
+            const cleanTitle = cleanEpornerTitle(directData.title, id);
+            handleLoaded({
+              ...directData,
+              title: cleanTitle,
+              keywords: extractVideoTags(cleanTitle, directData.keywords).join(', '),
+            });
             return;
           }
         }
@@ -349,9 +360,7 @@ export default function WatchClient({
     loadSmartSimilar(video, safePage, activeTopic);
   };
 
-  const tagList = video?.keywords
-    ? video.keywords.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 15)
-    : [];
+  const tagList = video ? extractVideoTags(video.title, video.keywords) : [];
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ddd]">
@@ -517,8 +526,15 @@ export default function WatchClient({
 
           <h2 className="text-[#FF9900] text-lg font-bold mb-2">Video Description</h2>
           <p className="text-gray-300 leading-relaxed">
-            Watch {video?.title || 'this full HD video'} on HubTube (indiansexvideo.tv).<br />
-            Free HD porn video streaming with fast HubTube quality, viral Desi MMS, and top pornstars.
+            {video
+              ? buildUniqueSeoDescription({
+                  id: video.id,
+                  title: video.title,
+                  keywords: video.keywords,
+                  duration: video.length_min,
+                  views: video.views,
+                })
+              : 'Loading video details and tags...'}
           </p>
 
           {tagList.length > 0 && (
