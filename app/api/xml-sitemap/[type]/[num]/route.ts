@@ -62,13 +62,25 @@ export async function GET(
       ? [
           `${BASE_URL}/`,
           `${BASE_URL}/reels`,
+          `${BASE_URL}/reels/indian-sex-reels`,
+          `${BASE_URL}/reels/desi-sex-reels`,
+          `${BASE_URL}/reels/sex-reels`,
+          `${BASE_URL}/reels/hot-sex-reels`,
+          `${BASE_URL}/trending/desi-mms`,
+          `${BASE_URL}/trending/desi-leaked-videos`,
+          `${BASE_URL}/trending/desi-village-girls`,
+          `${BASE_URL}/trending/hot-desi-porn-videos`,
+          `${BASE_URL}/trending/pakistani-girls`,
+          `${BASE_URL}/trending/pakistani-viral-videos`,
+          `${BASE_URL}/trending/pakistani-viral-mms`,
+          `${BASE_URL}/trending/pakistani-leaked-mms`,
           `${BASE_URL}/categories`,
           `${BASE_URL}/pornstars`,
           `${BASE_URL}/partners`,
           ...['desi', 'indian', 'bhabhi', 'hindi', 'mms', 'south-indian', 'tamil', 'telugu', 'mallu', 'punjabi'].map(
             (c) => `${BASE_URL}/category/${c}`
           ),
-        ].map((u) => `  <url><loc>${esc(u)}</loc><lastmod>${now}</lastmod><priority>0.8</priority></url>`)
+        ].map((u) => `  <url><loc>${esc(u)}</loc><lastmod>${now}</lastmod><priority>0.85</priority></url>`)
       : [];
 
   const videoUrls = chunk.map(

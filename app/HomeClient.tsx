@@ -882,7 +882,7 @@ export default function HomeClient({
 
         <div className="mt-6">
           {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {[...Array(15)].map((_, i) => (
                 <div key={i} className="bg-[#1a1a1a] rounded-2xl overflow-hidden animate-pulse aspect-video" />
               ))}
@@ -893,7 +893,7 @@ export default function HomeClient({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                 {videos.slice(0, 15).map((v) => (
                   <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                     <VideoCard video={v} />
@@ -907,7 +907,7 @@ export default function HomeClient({
                   <div className="my-8">
                     <JuicyBanner />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     {videos.slice(15).map((v) => (
                       <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                         <VideoCard video={v} />
@@ -933,7 +933,7 @@ export default function HomeClient({
             <h2 className="text-2xl font-black text-[#FF9900] mb-6">
               Recently Watched
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {recentHistory.map((v) => (
                 <Link key={`hist-${v.id}`} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                   <VideoCard video={v} />

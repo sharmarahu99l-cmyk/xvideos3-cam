@@ -1,3 +1,4 @@
+import TrendingHubBar from "../components/TrendingHubBar";
 import Link from "next/link";
 import type { Metadata } from 'next';
 import HomeClient from './HomeClient';

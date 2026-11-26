@@ -586,14 +586,14 @@ export default function WatchClient({
           )}
 
           {loadingRelated ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {[...Array(10)].map((_, i) => (
                 <div key={i} className="bg-[#1a1a1a] rounded-2xl aspect-video animate-pulse" />
               ))}
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                 {related.slice(0, 15).map((v) => (
                   <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                     <VideoCard video={v} />
@@ -606,7 +606,7 @@ export default function WatchClient({
                   <div className="my-8">
                     <JuicyBanner />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     {related.slice(15).map((v) => (
                       <Link key={v.id} href={`/watch/${v.id}`} onClick={scrollTopNow} className="block">
                         <VideoCard video={v} />
