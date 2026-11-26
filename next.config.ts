@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      { source: "/sitemap-:num.xml", destination: "/api/xml-sitemap/page/:num" },
+      { source: "/video-sitemap-:num.xml", destination: "/api/xml-sitemap/video/:num" },
+    ];
+  },
   images: {
     remotePatterns: [
       {
