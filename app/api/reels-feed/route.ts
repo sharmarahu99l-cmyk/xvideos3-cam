@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
       rawQuery
-    )}&per_page=18&page=${page}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`;
+    )}&per_page=18&page=${page}&order=${encodeURIComponent(order)}&lq=1&thumbsize=big&format=json`;
 
     const res = await fetch(url, {
       signal: AbortSignal.timeout(3000),

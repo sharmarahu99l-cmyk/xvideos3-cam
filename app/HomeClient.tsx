@@ -201,7 +201,7 @@ async function fetchVideos(
 
   try {
     const direct = await fetch(
-      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}${order ? `&order=${encodeURIComponent(order)}` : ''}&lq=0&thumbsize=big&format=json`
+      `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(searchTerm)}&per_page=${perPage}&page=${pageNum}${order ? `&order=${encodeURIComponent(order)}` : ''}&lq=1&thumbsize=big&format=json`
     );
     if (direct.ok) {
       const data = await direct.json();
@@ -221,7 +221,7 @@ async function fetchRandomTopicReels(
     const direct = await fetch(
       `https://www.eporner.com/api/v2/video/search/?query=${encodeURIComponent(
         topic
-      )}&per_page=8&page=${pageNum}&order=${encodeURIComponent(order)}&lq=0&thumbsize=big&format=json`,
+      )}&per_page=8&page=${pageNum}&order=${encodeURIComponent(order)}&lq=1&thumbsize=big&format=json`,
       { cache: 'no-store' }
     );
     if (direct.ok) {
