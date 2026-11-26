@@ -1,11 +1,11 @@
+'use client';
+
 import {
   buildUniqueSeoDescription,
   cleanEpornerTitle,
   extractVideoTags,
   isFallbackPlaceholderTitle,
 } from '../../../lib/seoDescription';
-'use client';
-
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
